@@ -28,7 +28,7 @@
             <div>
                 <div class="flex items-center gap-3">
                     <h1 class="text-white text-4xl font-black uppercase italic tracking-tighter">Gestão de <span
-                            class="text-orange-500">Caixa</span></h1>
+                            class="text-green-500">Caixa</span></h1>
                     <span
                         class="px-3 py-1 bg-gray-800 text-gray-500 text-[10px] font-black rounded-lg uppercase border border-gray-700">Módulo
                         Bar</span>
@@ -128,7 +128,7 @@
                             @if (in_array(auth()->user()->role, ['admin', 'gestor']))
                                 {{-- Se for o dono/gestor logado --}}
                                 <span
-                                    class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest">Confirme
+                                    class="text-[9px] font-black text-green-500 uppercase block mb-2 tracking-widest">Confirme
                                     sua Senha</span>
                             @else
                                 {{-- Se for o colaborador logado --}}

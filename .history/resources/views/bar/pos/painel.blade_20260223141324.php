@@ -21,7 +21,7 @@
             <a href="{{ route('bar.pdv') }}"
                 class="group relative bg-gray-900 border border-gray-800 p-10 rounded-[3rem] hover:border-orange-500 transition-all duration-500 shadow-2xl hover:-translate-y-2">
                 <div class="relative z-10">
-                    <div class="w-16 h-16 bg-orange-600/10 border border-orange-600/20 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-orange-600 group-hover:text-white transition-all shadow-lg">
+                    <div class="w-16 h-16 bg-orange-600/10 border border-orange-600/20 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-lg">
                         ⚡
                     </div>
                     <h2 class="text-3xl font-black text-white uppercase italic tracking-tighter mb-2">Fazer Venda</h2>

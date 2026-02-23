@@ -128,7 +128,7 @@
                             @if (in_array(auth()->user()->role, ['admin', 'gestor']))
                                 {{-- Se for o dono/gestor logado --}}
                                 <span
-                                    class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest">Confirme
+                                    class="text-[9px] font-black text-green-500 uppercase block mb-2 tracking-widest">Confirme
                                     sua Senha</span>
                             @else
                                 {{-- Se for o colaborador logado --}}

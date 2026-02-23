@@ -20,49 +20,33 @@ class BarReportController extends Controller
     /**
      * DASHBOARD PRINCIPAL DE RELATÓRIOS
      */
-    /**
-     * DASHBOARD PRINCIPAL DE RELATÓRIOS (CORRIGIDO)
-     */
     public function index(Request $request)
     {
         $mesReferencia = $request->input('mes_referencia', now()->format('Y-m'));
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 1. Faturamento Consolidado (Aceitando 'paid' e 'pago')
-        $faturamentoMesas = BarOrder::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('updated_at', [$startDate, $endDate])
-            ->sum('total_value');
-
-        $faturamentoPDV = BarSale::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('total_value');
-
+        // 1. Faturamento Consolidado
+        $faturamentoMesas = BarOrder::where('status', 'paid')->whereBetween('updated_at', [$startDate, $endDate])->sum('total_value');
+        $faturamentoPDV = BarSale::where('status', 'paid')->whereBetween('created_at', [$startDate, $endDate])->sum('total_value');
         $faturamentoMensal = $faturamentoMesas + $faturamentoPDV;
 
-        // 2. Itens Vendidos (Corrigido Status)
+        // 2. Itens Vendidos
         $itensMesas = BarOrderItem::whereHas('order', function ($q) use ($startDate, $endDate) {
-            $q->whereIn('status', ['paid', 'pago'])
-                ->whereBetween('updated_at', [$startDate, $endDate]);
+            $q->where('status', 'paid')->whereBetween('updated_at', [$startDate, $endDate]);
         })->sum('quantity');
-
         $itensPDV = BarSaleItem::whereHas('sale', function ($q) use ($startDate, $endDate) {
-            $q->whereIn('status', ['paid', 'pago'])
-                ->whereBetween('created_at', [$startDate, $endDate]);
+            $q->where('status', 'paid')->whereBetween('created_at', [$startDate, $endDate]);
         })->sum('quantity');
-
         $totalItensMes = $itensMesas + $itensPDV;
 
         // 3. Ticket Médio
-        $transacoes = BarOrder::whereIn('status', ['paid', 'pago'])->whereBetween('updated_at', [$startDate, $endDate])->count() +
-            BarSale::whereIn('status', ['paid', 'pago'])->whereBetween('created_at', [$startDate, $endDate])->count();
-
+        $transacoes = BarOrder::where('status', 'paid')->whereBetween('updated_at', [$startDate, $endDate])->count() +
+            BarSale::where('status', 'paid')->whereBetween('created_at', [$startDate, $endDate])->count();
         $ticketMedio = $transacoes > 0 ? $faturamentoMensal / $transacoes : 0;
 
         // 4. Sangrias
-        $totalSangriasMes = BarCashMovement::where('type', 'sangria')
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('amount');
+        $totalSangriasMes = BarCashMovement::where('type', 'sangria')->whereBetween('created_at', [$startDate, $endDate])->sum('amount');
 
         return view('bar.reports.index', compact('faturamentoMensal', 'totalItensMes', 'ticketMedio', 'totalSangriasMes', 'mesReferencia'));
     }
