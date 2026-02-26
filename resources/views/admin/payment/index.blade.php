@@ -120,9 +120,19 @@
                         <div class="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-tighter">
                             📊 Jogos / Faltas</div>
                         <div class="mt-1 text-xl font-black text-gray-900 dark:text-white flex items-baseline gap-1">
-                            <span>{{ $totalReservasDia }}</span>
-                            <span class="text-[10px] font-normal text-gray-500 uppercase">Totais</span>
+                            {{-- Mostra o total de linhas exibidas na tabela atual --}}
+                            <span>{{ $reservas->count() }}</span>
+                            <span class="text-[10px] font-normal text-gray-500 uppercase">Lista</span>
+
                             <span class="mx-1 text-gray-300">|</span>
+
+                            {{-- Mostra quantos desses agendamentos são de fato para a data selecionada --}}
+                            <span class="text-blue-600">{{ $reservas->where('date', $selectedDate)->count() }}</span>
+                            <span class="text-[10px] font-normal text-blue-500 uppercase">Jogos</span>
+
+                            <span class="mx-1 text-gray-300">|</span>
+
+                            {{-- Mantém a contagem de faltas --}}
                             <span class="text-red-600">{{ $noShowCount }}</span>
                             <span class="text-[10px] font-normal text-red-500 uppercase">Faltas</span>
                         </div>
