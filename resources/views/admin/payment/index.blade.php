@@ -6,15 +6,15 @@
     </x-slot>
 
     @php
-        // Variável de controle para desabilitar ações se o caixa estiver fechado
-        $isActionDisabled = isset($cashierStatus) && $cashierStatus === 'closed';
-        // Para garantir que exista, caso não venha do Controller
-        $totalReservasDia = $totalReservasDia ?? 0;
-        $totalRecebidoDiaLiquido = $totalRecebidoDiaLiquido ?? 0;
-        $totalAntecipadoReservasDia = $totalAntecipadoReservasDia ?? 0;
-        $totalPending = $totalPending ?? 0;
-        $totalExpected = $totalExpected ?? 0;
-        $noShowCount = $noShowCount ?? 0;
+    // Variável de controle para desabilitar ações se o caixa estiver fechado
+    $isActionDisabled = isset($cashierStatus) && $cashierStatus === 'closed';
+    // Para garantir que exista, caso não venha do Controller
+    $totalReservasDia = $totalReservasDia ?? 0;
+    $totalRecebidoDiaLiquido = $totalRecebidoDiaLiquido ?? 0;
+    $totalAntecipadoReservasDia = $totalAntecipadoReservasDia ?? 0;
+    $totalPending = $totalPending ?? 0;
+    $totalExpected = $totalExpected ?? 0;
+    $noShowCount = $noShowCount ?? 0;
     @endphp
 
     <div class="py-8">
@@ -149,15 +149,15 @@
 
                     {{-- Aviso de Filtro (Só aparece se estiver aberto e com arena) --}}
                     @if ($cashierStatus !== 'closed' && request('arena_id'))
-                        <div
-                            class="mb-3 p-2 bg-amber-100 text-amber-800 text-xs rounded-lg border border-amber-200 flex items-center">
-                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd"
-                                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                                    clip-rule="evenodd"></path>
-                            </svg>
-                            <span>Nota: O fechamento considera apenas os valores da arena selecionada.</span>
-                        </div>
+                    <div
+                        class="mb-3 p-2 bg-amber-100 text-amber-800 text-xs rounded-lg border border-amber-200 flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd"
+                                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                clip-rule="evenodd"></path>
+                        </svg>
+                        <span>Nota: O fechamento considera apenas os valores da arena selecionada.</span>
+                    </div>
                     @endif
 
                     <div class="flex flex-col sm:flex-row items-center justify-between">
@@ -171,55 +171,52 @@
                             </svg>
 
                             @if ($cashierStatus === 'closed')
-                                <span class="font-bold text-red-700 dark:text-red-300 uppercase">
-                                    Caixa Fechado ({{ \Carbon\Carbon::parse($selectedDate)->format('d/m/Y') }})
-                                </span>
+                            <span class="font-bold text-red-700 dark:text-red-300 uppercase">
+                                Caixa Fechado ({{ \Carbon\Carbon::parse($selectedDate)->format('d/m/Y') }})
+                            </span>
                             @else
-                                Status:
-                                @if (!request('arena_id'))
-                                    <span class="ml-2 font-bold text-amber-500 italic">Selecione uma unidade...</span>
-                                @elseif($totalPending > 0)
-                                    <span class="ml-2 font-bold text-red-500 animate-pulse">Aguardando Recebimentos (R$
-                                        {{ number_format($totalPending, 2, ',', '.') }})</span>
-                                @else
-                                    <span class="ml-2 font-bold text-green-600">✅ Arena pronta para fechar!</span>
-                                @endif
+                            Status:
+                            @if (!request('arena_id'))
+                            <span class="ml-2 font-bold text-amber-500 italic">Selecione uma unidade...</span>
+                            @elseif($totalPending > 0)
+                            <span class="ml-2 font-bold text-red-500 animate-pulse">Aguardando Recebimentos (R$
+                                {{ number_format($totalPending, 2, ',', '.') }})</span>
+                            @else
+                            <span class="ml-2 font-bold text-green-600">✅ Arena pronta para fechar!</span>
+                            @endif
                             @endif
                         </div>
 
                         {{-- Lado Direito: Botões --}}
                         <div class="w-full sm:w-auto">
                             @if ($cashierStatus === 'closed')
-                                <button type="button" onclick="openCash('{{ $selectedDate }}')"
-                                    class="w-full sm:w-auto px-6 py-2 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-150 flex items-center justify-center uppercase tracking-wider text-xs">
-                                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
-                                        viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z">
-                                        </path>
-                                    </svg>
-                                    Reabrir Caixa
-                                </button>
+                            <button type="button" onclick="requisitarAutorizacao(() => openCash('{{ $selectedDate }}'))"
+                                class="w-full sm:w-auto px-6 py-2 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-150 flex items-center justify-center uppercase tracking-wider text-xs">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
+                                </svg>
+                                Reabrir Caixa
+                            </button>
                             @else
-                                @if (request('arena_id'))
-                                    @if ($totalPending > 0)
-                                        <button type="button" disabled
-                                            class="w-full sm:w-auto px-6 py-2 bg-gray-400 text-white font-bold rounded-lg shadow-md cursor-not-allowed opacity-70 text-xs">
-                                            ⚠️ Pendência: R$ {{ number_format($totalPending, 2, ',', '.') }}
-                                        </button>
-                                    @else
-                                        <button id="openCloseCashModalBtn" onclick="openCloseCashModal()"
-                                            class="w-full sm:w-auto px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition duration-150 transform hover:scale-105 uppercase tracking-wider text-xs">
-                                            Fechar Caixa:
-                                            {{ $faturamentoPorArena->firstWhere('id', request('arena_id'))->name ?? '' }}
-                                        </button>
-                                    @endif
-                                @else
-                                    <button disabled
-                                        class="w-full sm:w-auto px-6 py-2 bg-indigo-300 text-white font-bold rounded-lg cursor-not-allowed text-xs uppercase">
-                                        Selecione uma Arena
-                                    </button>
-                                @endif
+                            @if (request('arena_id'))
+                            @if ($totalPending > 0)
+                            <button type="button" disabled
+                                class="w-full sm:w-auto px-6 py-2 bg-gray-400 text-white font-bold rounded-lg shadow-md cursor-not-allowed opacity-70 text-xs">
+                                ⚠️ Pendência: R$ {{ number_format($totalPending, 2, ',', '.') }}
+                            </button>
+                            @else
+                            <button id="openCloseCashModalBtn" onclick="openCloseCashModal()"
+                                class="w-full sm:w-auto px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition duration-150 transform hover:scale-105 uppercase tracking-wider text-xs">
+                                Fechar Caixa:
+                                {{ $faturamentoPorArena->firstWhere('id', request('arena_id'))->name ?? '' }}
+                            </button>
+                            @endif
+                            @else
+                            <button disabled
+                                class="w-full sm:w-auto px-6 py-2 bg-indigo-300 text-white font-bold rounded-lg cursor-not-allowed text-xs uppercase">
+                                Selecione uma Arena
+                            </button>
+                            @endif
                             @endif
                         </div>
                     </div>
@@ -237,7 +234,7 @@
                         {{-- Preserva a pesquisa e a arena ao mudar a data --}}
                         <input type="hidden" name="search" value="{{ request('search') }}">
                         @if (request('arena_id'))
-                            <input type="hidden" name="arena_id" value="{{ request('arena_id') }}">
+                        <input type="hidden" name="arena_id" value="{{ request('arena_id') }}">
                         @endif
 
                         <div class="flex items-center justify-between">
@@ -254,11 +251,11 @@
 
                             {{-- Link para limpar todos os filtros --}}
                             @if (request()->has('reserva_id') || request()->has('arena_id') || request()->has('search') || request()->has('filter'))
-                                <a href="{{ route('admin.payment.index', ['date' => $selectedDate]) }}"
-                                    class="text-xs text-red-500 hover:text-red-700 dark:text-red-400 font-medium"
-                                    title="Limpar todos os filtros e ver visão geral">
-                                    Limpar Filtros
-                                </a>
+                            <a href="{{ route('admin.payment.index', ['date' => $selectedDate]) }}"
+                                class="text-xs text-red-500 hover:text-red-700 dark:text-red-400 font-medium"
+                                title="Limpar todos os filtros e ver visão geral">
+                                Limpar Filtros
+                            </a>
                             @endif
                         </div>
 
@@ -274,7 +271,7 @@
                         {{-- Preserva a data e a arena ao pesquisar --}}
                         <input type="hidden" name="date" value="{{ $selectedDate }}">
                         @if (request('arena_id'))
-                            <input type="hidden" name="arena_id" value="{{ request('arena_id') }}">
+                        <input type="hidden" name="arena_id" value="{{ request('arena_id') }}">
                         @endif
 
                         <div class="flex flex-col h-full justify-between">
@@ -301,15 +298,15 @@
                                 </button>
 
                                 @if (request()->has('search') || request('filter') === 'debts')
-                                    <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'arena_id' => request('arena_id')]) }}"
-                                        class="h-10 px-2 py-1 flex items-center justify-center text-gray-500 hover:text-red-500 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 transition duration-150"
-                                        title="Limpar filtros ativos">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor"
-                                            viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                    </a>
+                                <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'arena_id' => request('arena_id')]) }}"
+                                    class="h-10 px-2 py-1 flex items-center justify-center text-gray-500 hover:text-red-500 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 transition duration-150"
+                                    title="Limpar filtros ativos">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </a>
                                 @endif
                             </div>
                         </div>
@@ -345,61 +342,61 @@
 
                     {{-- Botão para Resetar Filtro de Arena --}}
                     @if (request('arena_id'))
-                        <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'search' => request('search')]) }}"
-                            class="text-[10px] bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-red-500 hover:text-white transition uppercase tracking-tighter">
-                            ✕ Limpar Filtro
-                        </a>
+                    <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'search' => request('search')]) }}"
+                        class="text-[10px] bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-red-500 hover:text-white transition uppercase tracking-tighter">
+                        ✕ Limpar Filtro
+                    </a>
                     @endif
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     @forelse($faturamentoPorArena as $arena)
-                        @php
-                            $isActive = request('arena_id') == $arena->id;
-                        @endphp
+                    @php
+                    $isActive = request('arena_id') == $arena->id;
+                    @endphp
 
-                        <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'arena_id' => $arena->id, 'search' => request('search')]) }}"
-                            class="p-4 rounded-2xl shadow-sm border transition flex justify-between items-center
+                    <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'arena_id' => $arena->id, 'search' => request('search')]) }}"
+                        class="p-4 rounded-2xl shadow-sm border transition flex justify-between items-center
                 {{ $isActive
                     ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500 ring-2 ring-indigo-500 ring-opacity-50'
                     : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:shadow-md hover:border-indigo-300' }}
                 border-l-4 {{ $isActive ? 'border-l-indigo-600' : 'border-l-indigo-400' }}">
 
-                            <div class="truncate">
-                                <span
-                                    class="block text-[10px] font-black {{ $isActive ? 'text-indigo-600' : 'text-gray-400' }} uppercase tracking-tighter truncate">
-                                    {{ $arena->name }}
-                                </span>
-                                <span
-                                    class="text-lg font-black {{ $isActive ? 'text-indigo-800 dark:text-indigo-300' : 'text-indigo-700 dark:text-indigo-400' }}">
-                                    R$ {{ number_format($arena->total, 2, ',', '.') }}
-                                </span>
-                            </div>
-
-                            <div class="{{ $isActive ? 'text-indigo-600' : 'text-indigo-500' }}">
-                                @if ($isActive)
-                                    {{-- Ícone de Selecionado --}}
-                                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd"
-                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                            clip-rule="evenodd"></path>
-                                    </svg>
-                                @else
-                                    {{-- Ícone de Filtro --}}
-                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
-                                        </path>
-                                    </svg>
-                                @endif
-                            </div>
-                        </a>
-                    @empty
-                        <div
-                            class="col-span-full bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-center">
-                            <p class="text-xs text-gray-400 italic font-medium">Nenhum faturamento registrado para as
-                                arenas nesta data.</p>
+                        <div class="truncate">
+                            <span
+                                class="block text-[10px] font-black {{ $isActive ? 'text-indigo-600' : 'text-gray-400' }} uppercase tracking-tighter truncate">
+                                {{ $arena->name }}
+                            </span>
+                            <span
+                                class="text-lg font-black {{ $isActive ? 'text-indigo-800 dark:text-indigo-300' : 'text-indigo-700 dark:text-indigo-400' }}">
+                                R$ {{ number_format($arena->total, 2, ',', '.') }}
+                            </span>
                         </div>
+
+                        <div class="{{ $isActive ? 'text-indigo-600' : 'text-indigo-500' }}">
+                            @if ($isActive)
+                            {{-- Ícone de Selecionado --}}
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clip-rule="evenodd"></path>
+                            </svg>
+                            @else
+                            {{-- Ícone de Filtro --}}
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                                </path>
+                            </svg>
+                            @endif
+                        </div>
+                    </a>
+                    @empty
+                    <div
+                        class="col-span-full bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-center">
+                        <p class="text-xs text-gray-400 italic font-medium">Nenhum faturamento registrado para as
+                            arenas nesta data.</p>
+                    </div>
                     @endforelse
                 </div>
             </div>
@@ -411,30 +408,30 @@
                     <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
                         <div class="flex items-center">
                             @if (request()->has('reserva_id'))
-                                <span class="text-indigo-500">Reserva Selecionada (ID:
-                                    {{ request('reserva_id') }})</span>
+                            <span class="text-indigo-500">Reserva Selecionada (ID:
+                                {{ request('reserva_id') }})</span>
                             @elseif(request()->has('arena_id'))
-                                @php
-                                    $arenaNome =
-                                        $faturamentoPorArena->firstWhere('id', request('arena_id'))->name ??
-                                        'Arena Selecionada';
-                                @endphp
-                                <span class="text-indigo-600 dark:text-indigo-400">Agendamentos:
-                                    {{ $arenaNome }}</span>
+                            @php
+                            $arenaNome =
+                            $faturamentoPorArena->firstWhere('id', request('arena_id'))->name ??
+                            'Arena Selecionada';
+                            @endphp
+                            <span class="text-indigo-600 dark:text-indigo-400">Agendamentos:
+                                {{ $arenaNome }}</span>
                             @else
-                                Agendamentos do Dia ({{ \Carbon\Carbon::parse($selectedDate)->format('d/m/Y') }})
+                            Agendamentos do Dia ({{ \Carbon\Carbon::parse($selectedDate)->format('d/m/Y') }})
                             @endif
                         </div>
 
                         @if (request()->has('reserva_id') || request()->has('arena_id'))
-                            <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'search' => request('search')]) }}"
-                                class="text-sm font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-300 flex items-center transition duration-150">
-                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                                </svg>
-                                Ver Visão Geral
-                            </a>
+                        <a href="{{ route('admin.payment.index', ['date' => $selectedDate, 'search' => request('search')]) }}"
+                            class="text-sm font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-300 flex items-center transition duration-150">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                            </svg>
+                            Ver Visão Geral
+                        </a>
                         @endif
                     </h3>
 
@@ -470,176 +467,148 @@
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @forelse ($reservas as $reserva)
-                                    @php
-                                        $total = $reserva->final_price ?? $reserva->price;
-                                        $pago = $reserva->total_paid;
-                                        $restante = max(0, $total - $pago);
-                                        $currentStatus = $reserva->payment_status;
+                                @php
+                                $total = $reserva->final_price ?? $reserva->price;
 
-                                        // Lógica de Atraso
-                                        $dataHoje = \Carbon\Carbon::today()->toDateString();
-                                        $dataReserva = \Carbon\Carbon::parse($reserva->date)->toDateString();
-                                        $eHoje = $dataReserva === $dataHoje;
-                                        $isOverdue = false;
+                                // --- LÓGICA DE VALORES CORRIGIDA ---
+                                // Quanto entrou especificamente no dia que estamos olhando:
+                                $pagoNoDia = $financialTransactions->where('reserva_id', $reserva->id)->sum('amount');
 
-                                        if (
-                                            in_array($reserva->status, ['confirmed', 'pending']) &&
-                                            $currentStatus !== 'paid'
-                                        ) {
-                                            $onlyTime = \Carbon\Carbon::parse($reserva->end_time)->format('H:i:s');
-                                            try {
-                                                $reservaEndTime = \Carbon\Carbon::parse($dataReserva . ' ' . $onlyTime);
-                                                if ($reservaEndTime->isPast()) {
-                                                    $isOverdue = true;
-                                                }
-                                            } catch (\Exception $e) {
-                                                $isOverdue = false;
-                                            }
-                                        }
+                                // Total que a reserva já tem acumulado (independente do dia):
+                                $pagoGeral = $reserva->total_paid;
 
-                                        // --- Estilo do Status Refatorado ---
-                                        if ($reserva->status === 'no_show') {
-                                            $statusClass = 'bg-red-500 text-white';
-                                            $statusLabel = 'FALTA';
-                                        } elseif (in_array($reserva->status, ['canceled', 'rejected'])) {
-                                            $statusClass = 'bg-gray-400 text-white';
-                                            $statusLabel = 'CANCELADO';
-                                        }
-                                        // 1. PRIORIDADE TOTAL: Se está pago
-                                        elseif ($currentStatus === 'paid') {
-                                            $statusClass =
-                                                'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-                                            $statusLabel = 'PAGO';
-                                        }
-                                        // 2. DÍVIDA: Jogo concluído mas financeiro pendente (Onde entra o seu ajuste)
-                                        elseif ($reserva->status === 'completed' && $currentStatus !== 'paid') {
-                                            $statusClass =
-                                                'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse';
-                                            $statusLabel = 'DÍVIDA ATIVA';
-                                        }
-                                        // 3. ATRASO
-                                        elseif ($isOverdue) {
-                                            $statusClass = 'bg-red-700 text-white animate-pulse';
-                                            $statusLabel = 'ATRASADO';
-                                        }
-                                        // 4. PAGAMENTO PARCIAL
-                                        elseif ($currentStatus === 'partial') {
-                                            $statusClass = 'bg-yellow-100 text-yellow-800';
-                                            $statusLabel = 'PARCIAL';
-                                        } else {
-                                            $statusClass = 'bg-gray-100 text-gray-800';
-                                            $statusLabel = $pago > 0 ? 'SINAL' : 'PENDENTE';
-                                        }
+                                $restante = max(0, $total - $pagoGeral);
+                                $currentStatus = $reserva->payment_status;
 
-                                        $rowHighlight = $eHoje
-                                            ? 'bg-blue-50/40 dark:bg-blue-900/10 border-l-4 border-blue-500'
-                                            : 'hover:bg-gray-50 border-l-4 border-transparent';
+                                // Lógica de Atraso
+                                $dataHoje = \Carbon\Carbon::today()->toDateString();
+                                $dataReserva = \Carbon\Carbon::parse($reserva->date)->toDateString();
+                                $eHoje = $dataReserva === $dataHoje;
+                                $isOverdue = false;
 
-                                        $canPay =
-                                            $restante > 0 && !in_array($reserva->status, ['canceled', 'rejected']);
-                                        $canBeNoShow = !in_array($reserva->status, [
-                                            'no_show',
-                                            'canceled',
-                                            'rejected',
-                                            'completed',
-                                        ]);
+                                if (in_array($reserva->status, ['confirmed', 'pending']) && $currentStatus !== 'paid') {
+                                $onlyTime = \Carbon\Carbon::parse($reserva->end_time)->format('H:i:s');
+                                try {
+                                $reservaEndTime = \Carbon\Carbon::parse($dataReserva . ' ' . $onlyTime);
+                                if ($reservaEndTime->isPast()) { $isOverdue = true; }
+                                } catch (\Exception $e) { $isOverdue = false; }
+                                }
 
-                                        // Regra para o botão Pagar Depois: só aparece se não estiver pago E não for dívida ativa
-                                        $canBeDebt =
-                                            $restante > 0 &&
-                                            $reserva->status !== 'completed' &&
-                                            !in_array($reserva->status, ['canceled', 'rejected', 'no_show']);
-                                    @endphp
+                                // --- Estilo do Status ---
+                                if ($reserva->status === 'no_show') {
+                                $statusClass = 'bg-red-500 text-white'; $statusLabel = 'FALTA';
+                                } elseif (in_array($reserva->status, ['canceled', 'rejected'])) {
+                                $statusClass = 'bg-gray-400 text-white'; $statusLabel = 'CANCELADO';
+                                } elseif ($currentStatus === 'paid') {
+                                $statusClass = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'; $statusLabel = 'PAGO';
+                                } elseif ($reserva->status === 'completed' && $currentStatus !== 'paid') {
+                                $statusClass = 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'; $statusLabel = 'DÍVIDA ATIVA';
+                                } elseif ($isOverdue) {
+                                $statusClass = 'bg-red-700 text-white animate-pulse'; $statusLabel = 'ATRASADO';
+                                } elseif ($currentStatus === 'partial') {
+                                $statusClass = 'bg-yellow-100 text-yellow-800'; $statusLabel = 'PARCIAL';
+                                } else {
+                                $statusClass = 'bg-gray-100 text-gray-800';
+                                $statusLabel = $pagoGeral > 0 ? 'SINAL' : 'PENDENTE';
+                                }
 
-                                    <tr class="{{ $rowHighlight }} transition duration-150">
-                                        {{-- Horário --}}
-                                        <td
-                                            class="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-700 dark:text-gray-300">
-                                            {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }} -
-                                            {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}
-                                        </td>
+                                $rowHighlight = $eHoje ? 'bg-blue-50/40 dark:bg-blue-900/10 border-l-4 border-blue-500' : 'hover:bg-gray-50 border-l-4 border-transparent';
 
-                                        {{-- Cliente --}}
-                                        <td class="px-4 py-4 whitespace-nowrap">
-                                            <div class="text-sm font-medium text-gray-900 dark:text-white">
-                                                {{ $reserva->client_name }}
-                                                <span
-                                                    class="text-[10px] text-gray-400 font-normal">#{{ $reserva->id }}</span>
-                                            </div>
-                                            <div class="flex items-center gap-2 mt-1">
-                                                <span
-                                                    class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 font-black border border-indigo-100">
-                                                    🏟️ {{ $reserva->arena->name ?? 'N/A' }}
-                                                </span>
-                                            </div>
-                                        </td>
+                                $canPay = $restante > 0 && !in_array($reserva->status, ['canceled', 'rejected']);
+                                $canBeNoShow = !in_array($reserva->status, ['no_show', 'canceled', 'rejected', 'completed']);
+                                $canBeDebt = $restante > 0 && $reserva->status !== 'completed' && !in_array($reserva->status, ['canceled', 'rejected', 'no_show']);
+                                @endphp
 
-                                        {{-- Status --}}
-                                        <td class="px-4 py-4 whitespace-nowrap">
-                                            <span
-                                                class="px-2 py-0.5 inline-flex text-[10px] leading-4 font-bold rounded-full {{ $statusClass }}">
-                                                {{ $statusLabel }}
+                                <tr class="{{ $rowHighlight }} transition duration-150">
+                                    {{-- Horário --}}
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-700 dark:text-gray-300">
+                                        {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }} -
+                                        {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}
+                                    </td>
+
+                                    {{-- Cliente --}}
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            {{ $reserva->client_name }}
+                                            <span class="text-[10px] text-gray-400 font-normal">#{{ $reserva->id }}</span>
+                                        </div>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 font-black border border-indigo-100">
+                                                🏟️ {{ $reserva->arena->name ?? 'N/A' }}
                                             </span>
-                                        </td>
+                                        </div>
+                                    </td>
 
-                                        {{-- Tipo --}}
-                                        <td class="px-4 py-4 whitespace-nowrap text-xs">
-                                            <span
-                                                class="font-semibold {{ $reserva->is_recurrent ? 'text-fuchsia-600' : 'text-blue-600' }}">
-                                                {{ $reserva->is_recurrent ? 'Recorrente' : 'Pontual' }}
-                                            </span>
-                                        </td>
+                                    {{-- Status --}}
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-0.5 inline-flex text-[10px] leading-4 font-bold rounded-full {{ $statusClass }}">
+                                            {{ $statusLabel }}
+                                        </span>
+                                    </td>
 
-                                        {{-- Valores --}}
-                                        <td
-                                            class="px-4 py-4 text-right text-sm font-bold text-gray-900 dark:text-white">
-                                            R$ {{ number_format($total, 2, ',', '.') }}
-                                        </td>
-                                        <td class="px-4 py-4 text-right text-sm text-green-600 font-semibold">
-                                            R$ {{ number_format($pago, 2, ',', '.') }}
-                                        </td>
-                                        <td
-                                            class="px-4 py-4 text-right text-sm font-bold {{ $restante > 0 ? 'text-red-600' : 'text-gray-400' }}">
-                                            R$ {{ number_format($restante, 2, ',', '.') }}
-                                        </td>
+                                    {{-- Tipo --}}
+                                    <td class="px-4 py-4 whitespace-nowrap text-xs">
+                                        <span class="font-semibold {{ $reserva->is_recurrent ? 'text-fuchsia-600' : 'text-blue-600' }}">
+                                            {{ $reserva->is_recurrent ? 'Recorrente' : 'Pontual' }}
+                                        </span>
+                                    </td>
 
-                                        {{-- Ações --}}
-                                        <td class="px-4 py-4 whitespace-nowrap text-center text-sm space-x-1">
-                                            @if ($canPay)
-                                                {{-- Botão Baixar: Sempre visível se houver saldo devedor --}}
-                                                <button type="button"
-                                                    onclick="openPaymentModal({{ $reserva->id }}, {{ (float) $total }}, {{ (float) $restante }}, {{ (float) $pago }}, '{{ addslashes($reserva->client_name) }}', {{ $reserva->is_recurrent ? 'true' : 'false' }})"
-                                                    class="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
-                                                    {{ $isActionDisabled ? 'disabled' : '' }}>
-                                                    $ BAIXAR
-                                                </button>
+                                    {{-- Valor Total --}}
+                                    <td class="px-4 py-4 text-right text-sm font-bold text-gray-900 dark:text-white">
+                                        R$ {{ number_format($total, 2, ',', '.') }}
+                                    </td>
 
-                                                @if ($canBeDebt)
-                                                    <button type="button"
-                                                        onclick="openDebtModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}')"
-                                                        class="bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
-                                                        {{ $isActionDisabled ? 'disabled' : '' }}
-                                                        title="O cliente vai pagar em outro dia">
-                                                        🕒 P. DEPOIS
-                                                    </button>
-                                                @endif
-                                            @endif
+                                    {{-- Total Pago (DINÂMICO PELO DIA) --}}
+                                    <td class="px-4 py-4 text-right whitespace-nowrap">
+                                        <div class="text-sm text-green-600 font-bold">
+                                            R$ {{ number_format($pagoNoDia, 2, ',', '.') }}
+                                        </div>
+                                        @if($pagoGeral > $pagoNoDia)
+                                        <div class="text-[9px] text-gray-400 font-medium">
+                                            Total Acumulado: R$ {{ number_format($pagoGeral, 2, ',', '.') }}
+                                        </div>
+                                        @endif
+                                    </td>
 
-                                            @if ($canBeNoShow)
-                                                <button type="button"
-                                                    onclick="openNoShowModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}', {{ (float) $pago }})"
-                                                    class="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
-                                                    {{ $isActionDisabled ? 'disabled' : '' }}>
-                                                    X FALTA
-                                                </button>
-                                            @endif
-                                        </td>
-                                    </tr>
+                                    {{-- Restante --}}
+                                    <td class="px-4 py-4 text-right text-sm font-bold {{ $restante > 0 ? 'text-red-600' : 'text-gray-400' }}">
+                                        R$ {{ number_format($restante, 2, ',', '.') }}
+                                    </td>
+
+                                    {{-- Ações --}}
+                                    <td class="px-4 py-4 whitespace-nowrap text-center text-sm space-x-1">
+                                        @if ($canPay)
+                                        <button type="button"
+                                            onclick="openPaymentModal({{ $reserva->id }}, {{ (float) $total }}, {{ (float) $restante }}, {{ (float) $pagoGeral }}, '{{ addslashes($reserva->client_name) }}', {{ $reserva->is_recurrent ? 'true' : 'false' }})"
+                                            class="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                            {{ $isActionDisabled ? 'disabled' : '' }}>
+                                            $ BAIXAR
+                                        </button>
+
+                                        @if ($canBeDebt)
+                                        <button type="button"
+                                            onclick="requisitarAutorizacao(() => openDebtModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}'))"
+                                            class="bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                            {{ $isActionDisabled ? 'disabled' : '' }}>
+                                            🕒 P. DEPOIS
+                                        </button>
+                                        @endif
+                                        @endif
+
+                                        @if ($canBeNoShow)
+                                        <button type="button"
+                                            onclick="requisitarAutorizacao(() => openNoShowModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}', {{ (float) $pagoGeral }}))"
+                                            class="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                            {{ $isActionDisabled ? 'disabled' : '' }}>
+                                            X FALTA
+                                        </button>
+                                        @endif
+                                    </td>
+                                </tr>
                                 @empty
-                                    <tr>
-                                        <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">Nenhum
-                                            agendamento encontrado.</td>
-                                    </tr>
+                                <tr>
+                                    <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">Nenhum agendamento encontrado para esta data.</td>
+                                </tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -706,24 +675,35 @@
                     </div>
 
                     @php
-                        $groupedTransactions = $financialTransactions->groupBy('reserva_id');
+                    $groupedTransactions = $financialTransactions->groupBy('reserva_id');
 
-                        // DICIONÁRIO DE TRADUÇÃO PARA DADOS DO BANCO
-                        $traducao = [
-                            'no_show_penalty' => 'Multa de Falta',
-                            'retained_funds' => 'Valor Retido',
-                            'payment' => 'Pagamento',
-                            'partial_payment' => 'Pagt. Parcial',
-                            'signal' => 'Sinal/Entrada',
-                            'refund' => 'Estorno',
-                            'pix' => 'PIX',
-                            'money' => 'Dinheiro',
-                            'credit_card' => 'Crédito',
-                            'debit_card' => 'Débito',
-                            'transfer' => 'Transf.',
-                            'other' => 'Outro',
-                            'outro' => 'Outro',
-                        ];
+                    // DICIONÁRIO DE TRADUÇÃO PARA DADOS DO BANCO (Atualizado para evitar termos em inglês)
+                    $traducao = [
+                    // Tipos de Movimentação
+                    'no_show_penalty' => 'Multa de Falta',
+                    'retained_funds' => 'Valor Retido',
+                    'payment' => 'Pagamento',
+                    'partial_payment' => 'Pagt. Parcial',
+                    'signal' => 'Sinal/Entrada',
+                    'refund' => 'Estorno',
+                    'reforco' => 'Reforço',
+                    'sangria' => 'Sangria',
+                    'cash_out' => 'Saída (Estorno)',
+
+                    // Meios de Pagamento (Tratando todas as variações do Controller/Banco)
+                    'pix' => 'PIX',
+                    'money' => 'Dinheiro',
+                    'cash' => 'Dinheiro',
+                    'dinheiro' => 'Dinheiro',
+                    'credit_card' => 'Cartão de Crédito',
+                    'debit_card' => 'Cartão de Débito',
+                    'card' => 'Cartão',
+                    'cartao' => 'Cartão',
+                    'transfer' => 'Transf.',
+                    'transferencia' => 'Transferência',
+                    'other' => 'Outro',
+                    'outro' => 'Outro',
+                    ];
                     @endphp
 
                     <div class="overflow-x-auto">
@@ -747,115 +727,116 @@
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @forelse ($groupedTransactions as $reservaId => $transactions)
-                                    @php
-                                        $transactionExample = $transactions->first();
-                                        $reserva = $transactionExample->reserva;
-                                        $clientName =
-                                            $reserva->client_name ?? ($transactionExample->payer->name ?? 'N/D');
-                                        $arenaTag = $reserva->arena->name ?? '';
-                                        $dataDoJogo = $reserva
-                                            ? \Carbon\Carbon::parse($reserva->date)->format('d/m')
-                                            : null;
-                                        $ehPagamentoAntecipado = $reserva && $reserva->date != $selectedDate;
+                                @php
+                                $transactionExample = $transactions->first();
+                                $reserva = $transactionExample->reserva;
+                                $clientName =
+                                $reserva->client_name ?? ($transactionExample->payer->name ?? 'N/D');
+                                $arenaTag = $reserva->arena->name ?? '';
+                                $dataDoJogo = $reserva
+                                ? \Carbon\Carbon::parse($reserva->date)->format('d/m')
+                                : null;
+                                $ehPagamentoAntecipado = $reserva && $reserva->date != $selectedDate;
+                                @endphp
+
+                                @if ($reservaId)
+                                <tr
+                                    class="bg-gray-100 dark:bg-gray-700/60 border-t-2 border-indigo-500 text-left">
+                                    <td colspan="5"
+                                        class="px-4 py-2.5 text-sm font-bold text-gray-800 dark:text-gray-100">
+                                        <span
+                                            class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-600 text-white mr-3 uppercase text-left">Reserva</span>
+                                        ID: {{ $reservaId }} — {{ $clientName }}
+
+                                        @if ($ehPagamentoAntecipado)
+                                        <span
+                                            class="ml-3 bg-fuchsia-600 text-white px-2 py-0.5 rounded text-[11px] font-black">📅
+                                            JOGO: {{ $dataDoJogo }}</span>
+                                        @endif
+
+                                        @if ($reserva)
+                                        <span
+                                            class="ml-2 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[11px] font-black border border-indigo-200">
+                                            ⏰
+                                            {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}
+                                            às
+                                            {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}
+                                        </span>
+                                        @endif
+
+                                        @if ($arenaTag)
+                                        <span
+                                            class="ml-2 text-[9px] text-indigo-400 uppercase font-black tracking-widest">[{{ $arenaTag }}]</span>
+                                        @endif
+                                    </td>
+                                    <td
+                                        class="px-4 py-2.5 text-right text-sm font-black text-gray-900 dark:text-white bg-indigo-50/50 dark:bg-indigo-900/20 border-l border-indigo-100 dark:border-indigo-800/50">
+                                        R$ {{ number_format($transactions->sum('amount'), 2, ',', '.') }}
+                                    </td>
+                                </tr>
+                                @endif
+
+                                @foreach ($transactions as $transaction)
+                                @php
+                                $amount = (float) $transaction->amount;
+                                $isRefund = $transaction->type === 'refund' || $amount < 0;
+                                    $rowClass=$isRefund
+                                    ? 'bg-red-50/50 dark:bg-red-900/10 border-l-4 border-red-500'
+                                    : 'hover:bg-gray-50 dark:hover:bg-gray-700 border-l-4 border-transparent' ;
+                                    $amountClass=$amount>= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-black';
                                     @endphp
-
-                                    @if ($reservaId)
-                                        <tr
-                                            class="bg-gray-100 dark:bg-gray-700/60 border-t-2 border-indigo-500 text-left">
-                                            <td colspan="5"
-                                                class="px-4 py-2.5 text-sm font-bold text-gray-800 dark:text-gray-100">
-                                                <span
-                                                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-600 text-white mr-3 uppercase text-left">Reserva</span>
-                                                ID: {{ $reservaId }} — {{ $clientName }}
-
-                                                @if ($ehPagamentoAntecipado)
-                                                    <span
-                                                        class="ml-3 bg-fuchsia-600 text-white px-2 py-0.5 rounded text-[11px] font-black">📅
-                                                        JOGO: {{ $dataDoJogo }}</span>
-                                                @endif
-
-                                                @if ($reserva)
-                                                    <span
-                                                        class="ml-2 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[11px] font-black border border-indigo-200">
-                                                        ⏰
-                                                        {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}
-                                                        às
-                                                        {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}
-                                                    </span>
-                                                @endif
-
-                                                @if ($arenaTag)
-                                                    <span
-                                                        class="ml-2 text-[9px] text-indigo-400 uppercase font-black tracking-widest">[{{ $arenaTag }}]</span>
-                                                @endif
-                                            </td>
-                                            <td
-                                                class="px-4 py-2.5 text-right text-sm font-black text-gray-900 dark:text-white bg-indigo-50/50 dark:bg-indigo-900/20 border-l border-indigo-100 dark:border-indigo-800/50">
-                                                R$ {{ number_format($transactions->sum('amount'), 2, ',', '.') }}
-                                            </td>
-                                        </tr>
-                                    @endif
-
-                                    @foreach ($transactions as $transaction)
-                                        @php
-                                            $amount = (float) $transaction->amount;
-                                            $isRefund = $transaction->type === 'refund' || $amount < 0;
-                                            $rowClass = $isRefund
-                                                ? 'bg-red-50/50 dark:bg-red-900/10 border-l-4 border-red-500'
-                                                : 'hover:bg-gray-50 dark:hover:bg-gray-700 border-l-4 border-transparent';
-                                            $amountClass =
-                                                $amount >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-black';
-                                        @endphp
-                                        <tr class="{{ $rowClass }} transition duration-150">
-                                            <td class="px-4 py-3 text-sm text-gray-500 font-mono italic text-left">
-                                                {{ \Carbon\Carbon::parse($transaction->paid_at)->format('H:i:s') }}
-                                            </td>
-                                            <td
-                                                class="px-4 py-3 text-sm font-medium {{ $isRefund ? 'text-red-700' : 'text-indigo-600' }} text-left">
-                                                #{{ $transaction->reserva_id ?? '--' }}
-                                            </td>
-                                            <td class="px-4 py-3 text-sm text-left">
-                                                <div class="font-semibold text-gray-700 dark:text-gray-300">
-                                                    {{ $transaction->payer->name ?? 'Caixa Geral' }}</div>
-                                                <div class="text-[10px] text-gray-400 italic">Gestor:
-                                                    {{ $transaction->manager->name ?? 'Sistema' }}</div>
-                                            </td>
-                                            <td class="px-4 py-3 text-sm text-left">
-                                                {{-- AQUI É FEITA A TRADUÇÃO DINÂMICA --}}
-                                                <div class="text-[10px] font-extrabold uppercase text-gray-500">
-                                                    {{ $traducao[strtolower($transaction->type)] ?? $transaction->type }}
-                                                </div>
-                                                <div
-                                                    class="text-[9px] px-1 bg-gray-100 dark:bg-gray-700 w-fit rounded font-bold text-gray-600 dark:text-gray-400">
-                                                    ({{ $traducao[strtolower($transaction->payment_method)] ?? $transaction->payment_method }})
-                                                </div>
-                                            </td>
-                                            <td
-                                                class="px-4 py-3 text-sm text-left leading-tight text-gray-600 dark:text-gray-400">
-                                                {{ $transaction->description }}
-                                            </td>
-                                            <td class="px-4 py-3 text-right text-sm font-mono {{ $amountClass }}">
-                                                {{ $amount < 0 ? '-' : '' }} R$
-                                                {{ number_format(abs($amount), 2, ',', '.') }}
-                                            </td>
-                                        </tr>
+                                    <tr class="{{ $rowClass }} transition duration-150">
+                                        <td class="px-4 py-3 text-sm text-gray-500 font-mono italic text-left">
+                                            {{ \Carbon\Carbon::parse($transaction->paid_at)->format('H:i:s') }}
+                                        </td>
+                                        <td
+                                            class="px-4 py-3 text-sm font-medium {{ $isRefund ? 'text-red-700' : 'text-indigo-600' }} text-left">
+                                            #{{ $transaction->reserva_id ?? '--' }}
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-left">
+                                            <div class="font-semibold text-gray-700 dark:text-gray-300">
+                                                {{ $transaction->payer->name ?? 'Caixa Geral' }}
+                                            </div>
+                                            <div class="text-[10px] text-gray-400 italic">Gestor:
+                                                {{ $transaction->manager->name ?? 'Sistema' }}
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-left">
+                                            {{-- AQUI É FEITA A TRADUÇÃO DINÂMICA --}}
+                                            <div class="text-[10px] font-extrabold uppercase text-gray-500">
+                                                {{ $traducao[strtolower($transaction->type)] ?? $transaction->type }}
+                                            </div>
+                                            <div
+                                                class="text-[9px] px-1 bg-gray-100 dark:bg-gray-700 w-fit rounded font-bold text-gray-600 dark:text-gray-400">
+                                                ({{ $traducao[strtolower($transaction->payment_method)] ?? $transaction->payment_method }})
+                                            </div>
+                                        </td>
+                                        <td
+                                            class="px-4 py-3 text-sm text-left leading-tight text-gray-600 dark:text-gray-400">
+                                            {{ $transaction->description }}
+                                        </td>
+                                        <td class="px-4 py-3 text-right text-sm font-mono {{ $amountClass }}">
+                                            {{ $amount < 0 ? '-' : '' }} R$
+                                            {{ number_format(abs($amount), 2, ',', '.') }}
+                                        </td>
+                                    </tr>
                                     @endforeach
-                                @empty
+                                    @empty
                                     <tr>
                                         <td colspan="6" class="px-4 py-12 text-center text-gray-500 italic">Nenhuma
                                             transação financeira registrada hoje.</td>
                                     </tr>
-                                @endforelse
+                                    @endforelse
 
-                                <tr class="bg-gray-100 dark:bg-gray-700 font-bold border-t-2 border-gray-300">
-                                    <td colspan="5"
-                                        class="px-4 py-4 text-right uppercase text-xs tracking-widest text-gray-600 dark:text-gray-300">
-                                        Total Líquido do Caixa:</td>
-                                    <td
-                                        class="px-4 py-4 text-right text-lg {{ $totalRecebidoDiaLiquido >= 0 ? 'text-green-700' : 'text-red-700' }}">
-                                        R$ {{ number_format($totalRecebidoDiaLiquido, 2, ',', '.') }}
-                                    </td>
-                                </tr>
+                                    <tr class="bg-gray-100 dark:bg-gray-700 font-bold border-t-2 border-gray-300">
+                                        <td colspan="5"
+                                            class="px-4 py-4 text-right uppercase text-xs tracking-widest text-gray-600 dark:text-gray-300">
+                                            Total Líquido do Caixa:</td>
+                                        <td
+                                            class="px-4 py-4 text-right text-lg {{ $totalRecebidoDiaLiquido >= 0 ? 'text-green-700' : 'text-red-700' }}">
+                                            R$ {{ number_format($totalRecebidoDiaLiquido, 2, ',', '.') }}
+                                        </td>
+                                    </tr>
                             </tbody>
                         </table>
                     </div>
@@ -877,10 +858,10 @@
                             Histórico de Fechamentos
                         </div>
                         @if (request('arena_id'))
-                            <span
-                                class="text-[10px] bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 px-2 py-1 rounded-md font-bold uppercase tracking-tighter">
-                                Filtrado por Unidade
-                            </span>
+                        <span
+                            class="text-[10px] bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 px-2 py-1 rounded-md font-bold uppercase tracking-tighter">
+                            Filtrado por Unidade
+                        </span>
                         @endif
                     </h3>
 
@@ -910,45 +891,45 @@
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @forelse ($cashierHistory ?? [] as $caixa)
-                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-150">
-                                        <td
-                                            class="px-4 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                            {{ \Carbon\Carbon::parse($caixa->date)->format('d/m/Y') }}
-                                        </td>
-                                        <td class="px-4 py-4 whitespace-nowrap">
-                                            <span
-                                                class="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold text-[10px] uppercase border border-indigo-100 dark:border-indigo-800">
-                                                {{ $caixa->arena->name ?? 'Geral' }}
-                                            </span>
-                                        </td>
-                                        <td
-                                            class="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {{ $caixa->user->name ?? 'Sistema' }}
-                                        </td>
-                                        <td class="px-4 py-4 text-right text-sm font-mono">
-                                            R$ {{ number_format($caixa->calculated_amount, 2, ',', '.') }}
-                                        </td>
-                                        <td class="px-4 py-4 text-right text-sm font-bold font-mono">
-                                            R$ {{ number_format($caixa->actual_amount, 2, ',', '.') }}
-                                        </td>
-                                        <td class="px-4 py-4 text-right text-sm font-bold font-mono">
-                                            @if ($caixa->difference > 0)
-                                                <span class="text-amber-600">+R$
-                                                    {{ number_format($caixa->difference, 2, ',', '.') }} ⚠️</span>
-                                            @elseif($caixa->difference < 0)
-                                                <span class="text-red-600">-R$
-                                                    {{ number_format(abs($caixa->difference), 2, ',', '.') }}
-                                                    🚨</span>
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-150">
+                                    <td
+                                        class="px-4 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                                        {{ \Carbon\Carbon::parse($caixa->date)->format('d/m/Y') }}
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span
+                                            class="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold text-[10px] uppercase border border-indigo-100 dark:border-indigo-800">
+                                            {{ $caixa->arena->name ?? 'Geral' }}
+                                        </span>
+                                    </td>
+                                    <td
+                                        class="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        {{ $caixa->user->name ?? 'Sistema' }}
+                                    </td>
+                                    <td class="px-4 py-4 text-right text-sm font-mono">
+                                        R$ {{ number_format($caixa->calculated_amount, 2, ',', '.') }}
+                                    </td>
+                                    <td class="px-4 py-4 text-right text-sm font-bold font-mono">
+                                        R$ {{ number_format($caixa->actual_amount, 2, ',', '.') }}
+                                    </td>
+                                    <td class="px-4 py-4 text-right text-sm font-bold font-mono">
+                                        @if ($caixa->difference > 0)
+                                        <span class="text-amber-600">+R$
+                                            {{ number_format($caixa->difference, 2, ',', '.') }} ⚠️</span>
+                                        @elseif($caixa->difference < 0)
+                                            <span class="text-red-600">-R$
+                                            {{ number_format(abs($caixa->difference), 2, ',', '.') }}
+                                            🚨</span>
                                             @else
-                                                <span class="text-green-600">R$ 0,00 ✅</span>
+                                            <span class="text-green-600">R$ 0,00 ✅</span>
                                             @endif
-                                        </td>
-                                    </tr>
+                                    </td>
+                                </tr>
                                 @empty
-                                    <tr>
-                                        <td colspan="6" class="px-4 py-8 text-center text-gray-500 italic">Nenhum
-                                            histórico disponível.</td>
-                                    </tr>
+                                <tr>
+                                    <td colspan="6" class="px-4 py-8 text-center text-gray-500 italic">Nenhum
+                                        histórico disponível.</td>
+                                </tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -1142,6 +1123,7 @@
 
         <div
             class="relative bg-white dark:bg-gray-800 rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full border dark:border-gray-700">
+            {{-- 💡 O ID do Form deve ser 'noShowForm' para bater com o JS --}}
             <form id="noShowForm">
                 @csrf
                 <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -1171,11 +1153,8 @@
                             {{-- CAMPOS OCULTOS --}}
                             <input type="hidden" id="noShowReservaId" name="reserva_id">
                             <input type="hidden" id="noShowPaidAmount" name="paid_amount">
-
-                            {{-- CAMPO ADICIONADO: Garante que o estorno caia na data do caixa --}}
                             <input type="hidden" id="noShowPaymentDate" name="payment_date">
 
-                            {{-- CONTROLE DE ESTORNO EVOLUÍDO --}}
                             <div id="refundControls"
                                 class="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl hidden border border-gray-200 dark:border-gray-600 space-y-4">
                                 <div>
@@ -1192,7 +1171,6 @@
                                     </select>
                                 </div>
 
-                                {{-- CAMPO DINÂMICO DE VALOR A DEVOLVER --}}
                                 <div id="customRefundDiv" class="hidden">
                                     <label for="custom_refund_amount"
                                         class="block text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">
@@ -1207,12 +1185,9 @@
                                             name="refund_amount"
                                             class="pl-10 block w-full rounded-md border-red-300 dark:border-red-700 shadow-sm focus:border-red-500 focus:ring-red-500 dark:bg-gray-800 dark:text-red-400 font-black text-xl">
                                     </div>
-                                    <p class="mt-1 text-[9px] text-gray-400 dark:text-gray-500 italic font-medium">*
-                                        Este valor será subtraído do saldo do caixa exibido na tela.</p>
                                 </div>
                             </div>
 
-                            {{-- MOTIVO --}}
                             <div class="mt-4">
                                 <label for="no_show_reason"
                                     class="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">
@@ -1223,7 +1198,6 @@
                                     placeholder="Descreva o motivo da falta..."></textarea>
                             </div>
 
-                            {{-- BLOQUEIO --}}
                             <div
                                 class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-2 border-dashed border-red-200 dark:border-red-800">
                                 <label class="inline-flex items-center cursor-pointer">
@@ -1266,8 +1240,7 @@
         </div>
     </div>
 
-
-    {{-- MODAL 3: FECHAR CAIXA (CLOSE CASH) - AJUSTADO PARA ARENA INDIVIDUAL --}}
+    {{-- MODAL 3: FECHAR CAIXA (CLOSE CASH) - ATUALIZADO COM COMPOSIÇÃO DE SALDO --}}
     <div id="closeCashModal" class="fixed inset-0 z-50 hidden overflow-y-auto flex items-center justify-center p-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"
             onclick="closeCloseCashModal()"></div>
@@ -1278,7 +1251,6 @@
                 @csrf
                 {{-- CAMPOS OCULTOS DE CONTROLE --}}
                 <input type="hidden" id="closeCashDate" name="date">
-                {{-- NOVO: Captura o ID da arena que está sendo filtrada no momento --}}
                 <input type="hidden" id="closeCashArenaId" name="arena_id" value="{{ request('arena_id') }}">
 
                 <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -1293,12 +1265,11 @@
                             </svg>
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                            <h3 class="text-lg leading-6 font-black text-gray-900 dark:text-white uppercase tracking-tight"
-                                id="modal-title">
+                            <h3
+                                class="text-lg leading-6 font-black text-gray-900 dark:text-white uppercase tracking-tight">
                                 Fechamento de Unidade
                             </h3>
 
-                            {{-- IDENTIFICAÇÃO DA ARENA NO MODAL --}}
                             <div class="mt-1 flex items-center gap-2">
                                 <span class="text-xs font-bold text-gray-500 uppercase">Arena:</span>
                                 <span class="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase">
@@ -1306,24 +1277,50 @@
                                 </span>
                             </div>
 
-                            {{-- DATA --}}
                             <div class="text-[10px] text-gray-400 font-bold uppercase mt-1">
                                 Período: <span id="closeCashDateDisplay"></span>
                             </div>
 
+                            {{-- 🚀 MELHORIA: COMPOSIÇÃO DO SALDO (GAVETA VS BANCO) --}}
+                            <div class="mt-4 grid grid-cols-2 gap-3">
+                                <div
+                                    class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 rounded-xl">
+                                    <span
+                                        class="block text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest">Gaveta
+                                        (Espécie)</span>
+                                    <span class="text-lg font-black text-amber-700 dark:text-amber-300">
+                                        {{-- Adicionado ?? 0 para evitar o Erro 500 --}}
+                                        R$ {{ number_format($saldoFisicoGaveta ?? 0, 2, ',', '.') }}
+                                    </span>
+                                    <p class="text-[9px] text-amber-600/70 leading-tight mt-1">Dinheiro físico contado.
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 rounded-xl">
+                                    <span
+                                        class="block text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Banco
+                                        (Digital)</span>
+                                    <span class="text-lg font-black text-blue-700 dark:text-blue-300">
+                                        {{-- Adicionado ?? 0 para evitar o Erro 500 --}}
+                                        R$ {{ number_format($saldoDigitalBanco ?? 0, 2, ',', '.') }}
+                                    </span>
+                                    <p class="text-[9px] text-blue-600/70 leading-tight mt-1">PIX, Cartões e
+                                        Transferências.</p>
+                                </div>
+                            </div>
+
                             <div class="mt-4 space-y-4">
-                                {{-- VALOR CALCULADO PELO SISTEMA --}}
+                                {{-- VALOR CALCULADO PELO SISTEMA (TOTAL) --}}
                                 <div>
                                     <label
                                         class="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                                        Saldo Esperado (Nesta Arena)
+                                        Saldo Total Esperado (Soma Geral)
                                     </label>
                                     <div id="calculatedLiquidAmount"
                                         class="mt-1 block w-full bg-gray-50 dark:bg-gray-900 p-3 rounded-md font-black text-2xl text-indigo-600 dark:text-indigo-400 border border-gray-200 dark:border-gray-700">
-                                        R$ 0,00
+                                        R$ {{ number_format($totalRecebidoDiaLiquido, 2, ',', '.') }}
                                     </div>
-                                    <p class="text-[10px] text-gray-400 mt-1 italic">Soma de entradas, reforços e
-                                        sangrias apenas desta unidade.</p>
                                 </div>
 
                                 {{-- VALOR INFORMADO PELO OPERADOR --}}
@@ -1331,7 +1328,7 @@
                                     class="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border-2 border-indigo-100 dark:border-indigo-800">
                                     <label for="actualCashAmount"
                                         class="block text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest mb-1 text-left">
-                                        Valor Contado Fisicamente
+                                        Valor Total Contado (Dinheiro + Digital)
                                     </label>
                                     <div class="relative">
                                         <div
@@ -1345,11 +1342,9 @@
                                     </div>
                                 </div>
 
-                                {{-- MENSAGEM DE CONFERÊNCIA (DIFERENÇA) --}}
                                 <div id="differenceMessage"
                                     class="hidden mt-3 p-3 text-sm font-bold rounded-lg text-center border transition-all duration-300">
                                 </div>
-
                                 <div id="closecash-error-message"
                                     class="hidden mt-3 p-3 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-xs font-bold rounded-lg border border-red-200 dark:border-red-800">
                                 </div>
@@ -1519,11 +1514,12 @@
                 <input type="hidden" name="date" value="{{ $selectedDate }}">
 
                 <div class="p-6">
-                    <h3 class="text-lg font-black text-gray-900 dark:text-white uppercase mb-4">Nova Movimentação
-                        Avulsa</h3>
+                    <h3 class="text-lg font-black text-gray-900 dark:text-white uppercase mb-4">
+                        Nova Movimentação Avulsa
+                    </h3>
 
                     <div class="space-y-4">
-                        {{-- Seleção de Arena: Agora com ID para automação via JS --}}
+                        {{-- Seleção de Arena: Corrigida para ser blindada contra variáveis indefinidas --}}
                         <div>
                             <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
                                 Arena / Unidade
@@ -1531,12 +1527,13 @@
                             <select name="arena_id" id="modal_transaction_arena_id" required
                                 class="w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white font-bold focus:ring-indigo-500">
                                 <option value="">SELECIONE A ARENA...</option>
-                                @foreach ($faturamentoPorArena as $arena)
-                                    {{-- Pré-seleciona se o filtro de arena estiver ativo na URL --}}
-                                    <option value="{{ $arena->id }}"
-                                        {{ request('arena_id') == $arena->id ? 'selected' : '' }}>
-                                        {{ $arena->name }}
-                                    </option>
+
+                                {{-- Tenta arenasAtivas, se não houver, tenta faturamentoPorArena, se não houver, usa array vazio --}}
+                                @foreach ($arenasAtivas ?? $faturamentoPorArena ?? [] as $arena)
+                                <option value="{{ $arena->id }}"
+                                    {{ request('arena_id') == $arena->id ? 'selected' : '' }}>
+                                    {{ $arena->name }}
+                                </option>
                                 @endforeach
                             </select>
                         </div>
@@ -1578,9 +1575,9 @@
 
                         {{-- Descrição --}}
                         <div>
-                            <label
-                                class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Descrição
-                                / Motivo</label>
+                            <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
+                                Descrição / Motivo
+                            </label>
                             <textarea name="description" rows="2" required
                                 class="w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white text-sm"
                                 placeholder="Ex: Pagamento de gelo / Troco inicial do dia"></textarea>
@@ -1594,7 +1591,9 @@
                         SALVAR MOVIMENTAÇÃO
                     </button>
                     <button type="button" onclick="closeTransactionModal()"
-                        class="text-gray-700 dark:text-gray-300 font-bold text-sm uppercase">CANCELAR</button>
+                        class="text-gray-700 dark:text-gray-300 font-bold text-sm uppercase">
+                        CANCELAR
+                    </button>
                 </div>
             </form>
         </div>
@@ -1721,42 +1720,88 @@
         }
 
         function openPaymentModal(id, totalPrice, remaining, signalAmount, clientName, isRecurrent = false) {
-            if (document.getElementById('js_isActionDisabled')?.value === '1') return alert('🚫 Caixa Fechado.');
+            // 1. Trava de segurança: impede abrir o modal se o caixa estiver fechado
+            if (document.getElementById('js_isActionDisabled')?.value === '1') {
+                return alert('🚫 Operação bloqueada: O caixa deste dia já está fechado.');
+            }
+
+            // 2. Preenchimento de IDs e nomes
             document.getElementById('modalReservaId').value = id;
             document.getElementById('modalClientName').innerText = clientName;
+
+            // 3. Formatação visual do sinal já pago (ex: R$ 40,00)
             document.getElementById('modalSignalAmount').innerText = signalAmount.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
             });
+
+            // 4. Valores brutos para cálculos (Inputs ocultos)
             document.getElementById('modalSignalAmountRaw').value = signalAmount.toFixed(2);
             document.getElementById('modalFinalPrice').value = totalPrice.toFixed(2);
 
-            const dataDoCaixa = document.getElementById('js_cashierDate')?.value;
-            if (dataDoCaixa) document.getElementById('modalPaymentDate').value = dataDoCaixa;
+            // 5. 🎯 CORREÇÃO DA DATA (O SEGREDO DO CAIXA)
+            // Buscamos primeiro a data do input de filtro da página, que é a data real de operação.
+            const inputDataFiltro = document.querySelector('input[name="date"]');
+            const dataDoCaixa = inputDataFiltro ? inputDataFiltro.value : document.getElementById('js_cashierDate')?.value;
 
+            if (dataDoCaixa) {
+                document.getElementById('modalPaymentDate').value = dataDoCaixa;
+                console.log("📅 Sistema operando na data:", dataDoCaixa); // Debug no console (F12)
+            } else {
+                console.error("❌ Erro: Não foi possível capturar a data operacional.");
+            }
+
+            // 6. Controle de exibição da opção de recorrência
             const recurrentOption = document.getElementById('recurrentOption');
-            if (recurrentOption) isRecurrent ? recurrentOption.classList.remove('hidden') : recurrentOption.classList.add(
-                'hidden');
+            if (recurrentOption) {
+                isRecurrent ? recurrentOption.classList.remove('hidden') : recurrentOption.classList.add('hidden');
+            }
 
+            // 7. Dispara o cálculo automático do saldo devedor
             calculateAmountDue();
-            document.getElementById('paymentModal').classList.replace('hidden', 'flex');
+
+            // 8. Exibe o modal (Troca hidden por flex para centralizar via Tailwind)
+            const modal = document.getElementById('paymentModal');
+            if (modal) {
+                modal.classList.replace('hidden', 'flex');
+            }
         }
 
         function openNoShowModal(id, clientName, paidAmount) {
+            // 1. Preenchimento básico dos dados no modal
             document.getElementById('noShowReservaId').value = id;
             document.getElementById('noShowClientName').innerText = clientName;
             document.getElementById('noShowPaidAmount').value = paidAmount;
 
-            const dataDoCaixa = document.getElementById('js_cashierDate')?.value;
-            if (dataDoCaixa) document.getElementById('noShowPaymentDate').value = dataDoCaixa;
+            // 2. 🎯 CORREÇÃO DA DATA OPERACIONAL
+            // Buscamos a data do filtro (calendário do topo) para garantir o registro no caixa correto
+            const inputDataFiltro = document.querySelector('input[name="date"]');
+            const dataDoCaixa = inputDataFiltro ? inputDataFiltro.value : document.getElementById('js_cashierDate')?.value;
 
+            if (dataDoCaixa) {
+                document.getElementById('noShowPaymentDate').value = dataDoCaixa;
+                console.log("📅 No-Show sendo registrado na data:", dataDoCaixa);
+            } else {
+                console.error("❌ Erro: Data operacional não encontrada para o No-Show.");
+            }
+
+            // 3. Exibição do valor pago para conferência de estorno
             document.getElementById('noShowAmountDisplay').innerText = paidAmount.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
             });
+
+            // 4. Controle visual: Se não houve pagamento, não precisa mostrar opções de estorno
             const refundControls = document.getElementById('refundControls');
-            paidAmount > 0 ? refundControls.classList.remove('hidden') : refundControls.classList.add('hidden');
-            document.getElementById('noShowModal').classList.replace('hidden', 'flex');
+            if (refundControls) {
+                paidAmount > 0 ? refundControls.classList.remove('hidden') : refundControls.classList.add('hidden');
+            }
+
+            // 5. Abre o modal
+            const modal = document.getElementById('noShowModal');
+            if (modal) {
+                modal.classList.replace('hidden', 'flex');
+            }
         }
 
         function openDebtModal(id, clientName) {
@@ -1867,25 +1912,33 @@
 
         // --- Lógica de Diferença de Caixa ---
         function calculateDifference() {
-            const systemEl = document.getElementById('valor-liquido-total-real');
+            // 🚀 AJUSTE: Buscamos o valor bruto (raw) do input oculto para evitar erros de formatação ou de arena
+            const systemValueRaw = document.getElementById('js_valorLiquidoArenaRaw')?.value || "0";
             const actualInput = document.getElementById('actualCashAmount');
             const diffMessageEl = document.getElementById('differenceMessage');
-            if (!systemEl || !actualInput) return;
 
-            const systemValue = systemEl.innerText.replace(/[^\d,]/g, '').replace(',', '.');
-            const diffCents = toCents(actualInput.value) - toCents(systemValue);
+            if (!actualInput || !diffMessageEl) return;
 
-            diffMessageEl.className = 'mt-3 p-3 text-sm font-bold rounded-lg text-center border';
+            // Calculamos em centavos para evitar erros de precisão do JavaScript
+            const diffCents = toCents(actualInput.value) - toCents(systemValueRaw);
+
+            // Reset de classes visual
+            diffMessageEl.className =
+                'mt-3 p-3 text-sm font-bold rounded-lg text-center border transition-all duration-300';
+
             if (diffCents === 0) {
                 diffMessageEl.innerHTML = '✅ Caixa Perfeito!';
                 diffMessageEl.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
             } else if (diffCents > 0) {
+                // Se informado > sistema = Sobra
                 diffMessageEl.innerHTML = `⚠️ Sobra no Físico: R$ ${fromCents(diffCents).replace('.', ',')}`;
                 diffMessageEl.classList.add('bg-amber-100', 'text-amber-700', 'border-amber-200');
             } else {
+                // Se informado < sistema = Falta
                 diffMessageEl.innerHTML = `🚨 Falta no Físico: R$ ${fromCents(Math.abs(diffCents)).replace('.', ',')}`;
                 diffMessageEl.classList.add('bg-red-100', 'text-red-700', 'border-red-200');
             }
+
             diffMessageEl.classList.remove('hidden');
         }
 
@@ -1942,89 +1995,105 @@
 
         function setupAjaxForm(formId, btnId, spinnerId, errorId, urlTemplate) {
             const form = document.getElementById(formId);
-            if (!form) {
-                console.error(`❌ ERRO CRÍTICO: Formulário #${formId} não existe no DOM.`);
-                return;
-            }
+            if (!form) return;
 
-            form.onsubmit = null; // Reseta qualquer trava anterior
+            const userRole = "{{ Auth::user()->role ?? 'guest' }}";
 
-            form.addEventListener('submit', function(e) {
+            // --- AJUSTE 1: Limpeza de Eventos ---
+            // Removemos qualquer listener anterior criando um clone do nó (padrão limpo de JS)
+            // Isso evita que o formulário seja enviado 2x, 3x se o modal for aberto várias vezes.
+            const newForm = form.cloneNode(true);
+            form.parentNode.replaceChild(newForm, form);
+
+            newForm.addEventListener('submit', function(e) {
                 e.preventDefault();
+                e.stopPropagation();
 
-                // --- 1. RASTREIO DE CLIQUE ---
-                console.log(`%c ⚡ EVENTO: Submetendo ${formId} `,
-                    'background: #000; color: #fff; font-weight: bold;');
+                const acoesCriticas = ['debtForm', 'openCashForm', 'transactionForm', 'noShowForm'];
+                let precisaSenha = acoesCriticas.includes(formId);
 
-                const btn = document.getElementById(btnId);
-                const spinner = document.getElementById(spinnerId);
-
-                // --- 2. VERIFICAÇÃO DE DADOS ---
-                const formData = new FormData(this);
-                const dataObj = Object.fromEntries(formData.entries());
-                console.log("📦 Dados que serão enviados:", dataObj);
-
-                // Identifica se é um formulário de CAIXA (que não exige reserva_id)
-                const isCashierAction = formId.toLowerCase().includes('cash') || formId.toLowerCase().includes(
-                    'caixa');
-
-                // Busca o ID da reserva apenas se não for uma ação de caixa
-                let idValue = dataObj.reserva_id ||
-                    document.getElementById('debtReservaId')?.value ||
-                    document.getElementById('modalReservaId')?.value;
-
-                // Se não tiver ID e NÃO for caixa, aí sim damos o erro
-                if (!idValue && !isCashierAction) {
-                    console.error("❌ ERRO: ID da reserva está vazio no momento do envio!");
-                    alert("Erro: ID da reserva não capturado.");
-                    return;
+                if (formId === 'transactionForm') {
+                    const type = newForm.querySelector('[name="type"]')?.value;
+                    if (type !== 'out') precisaSenha = false;
                 }
 
-                // Monta a URL (Se for caixa, a urlTemplate não deve conter {reserva} ou o replace não fará nada)
-                let targetUrl = urlTemplate;
-                if (idValue) {
-                    targetUrl = urlTemplate.replace('{reserva}', idValue).replace('{id}', idValue);
-                }
+                const executarEnvioAjax = (supervisorToken = null) => {
+                    const btn = document.getElementById(btnId);
+                    const spinner = document.getElementById(spinnerId);
+                    const formData = new FormData(newForm); // Usar o formulário atualizado
 
-                console.log(`📡 Rota Final: ${targetUrl}`);
+                    if (supervisorToken) {
+                        formData.append('supervisor_token', supervisorToken);
+                    } else if (precisaSenha && userRole === 'colaborador') {
+                        alert("Erro de segurança: A autorização do supervisor é obrigatória.");
+                        return;
+                    }
 
-                if (btn) btn.disabled = true;
-                if (spinner) spinner.classList.remove('hidden');
+                    // --- AJUSTE 2: Busca Robusta de ID ---
+                    // Tenta pegar o ID de todas as formas possíveis que usamos nos modais
+                    const reservaId = formData.get('reserva_id') ||
+                        formData.get('id') ||
+                        document.getElementById('modalReservaId')?.value ||
+                        document.getElementById('noShowReservaId')?.value ||
+                        document.getElementById('debtReservaId')?.value;
 
-                // --- 3. ENVIO E CAPTURA DE RESPOSTA ---
-                fetch(targetUrl, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                'content'),
-                            'Accept': 'application/json'
-                        }
-                    })
-                    .then(async response => {
-                        console.log(`🔌 Status HTTP: ${response.status} ${response.statusText}`);
-                        const text = await response.text();
+                    const urlPrecisaDeId = urlTemplate.includes('{reserva}') || urlTemplate.includes('{id}');
 
-                        try {
-                            const json = JSON.parse(text);
+                    if (urlPrecisaDeId && !reservaId) {
+                        alert("Erro: ID da reserva não identificado.");
+                        return;
+                    }
+
+                    let targetUrl = urlTemplate;
+                    if (reservaId) {
+                        targetUrl = urlTemplate.replace('{reserva}', reservaId).replace('{id}', reservaId);
+                    }
+
+                    if (btn) btn.disabled = true;
+                    if (spinner) spinner.classList.remove('hidden');
+
+                    fetch(targetUrl, {
+                            method: 'POST',
+                            body: formData,
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                                'Accept': 'application/json'
+                            }
+                        })
+                        .then(async response => {
+                            const text = await response.text();
+                            let json;
+                            try {
+                                json = JSON.parse(text);
+                            } catch (e) {
+                                throw new Error("Erro no servidor.");
+                            }
+
                             if (!response.ok) throw new Error(json.message || `Erro ${response.status}`);
-                            return json;
-                        } catch (e) {
-                            console.error("💀 RESPOSTA DO SERVIDOR NÃO É JSON:");
-                            console.log(text);
-                            throw new Error("O servidor retornou um erro interno (veja o console).");
-                        }
-                    })
-                    .then(data => {
-                        console.log('✅ SUCESSO NO BACKEND:', data);
-                        window.location.reload();
-                    })
-                    .catch(err => {
-                        console.error('❌ FALHA NO PROCESSO:', err.message);
-                        alert('Erro: ' + err.message);
-                        if (btn) btn.disabled = false;
-                        if (spinner) spinner.classList.add('hidden');
-                    });
+
+                            alert(json.message || 'Sucesso!');
+                            window.location.reload();
+                        })
+                        .catch(err => {
+                            // --- AJUSTE 3: Destravar Botão em caso de Erro ---
+                            alert('Erro: ' + err.message);
+                            if (btn) btn.disabled = false;
+                            if (spinner) spinner.classList.add('hidden');
+                        });
+                };
+
+                // --- Lógica de Autorização ---
+                if (precisaSenha && userRole === 'colaborador') {
+                    if (typeof window.executarComAutorizacao === "function") {
+                        window.executarComAutorizacao((token) => {
+                            if (token) executarEnvioAjax(token);
+                        }, "Autorização Necessária");
+                    } else {
+                        alert("Erro: Sistema de autorização não carregado.");
+                    }
+                } else {
+                    executarEnvioAjax();
+                }
             });
         }
 
@@ -2040,21 +2109,23 @@
 
             // 3. Registro dos formulários AJAX
             try {
-                // --- ROTAS FIXAS (Dados apenas no Body) ---
+                // --- ROTAS FIXAS ---
                 setupAjaxForm('transactionForm', 'submitTransactionBtn', null, null,
                     '/admin/pagamentos/movimentacao-avulsa');
+
                 setupAjaxForm('closeCashForm', 'submitCloseCashBtn', 'submitCloseCashSpinner',
                     'closecash-error-message', '/admin/pagamentos/fechar-caixa');
+
                 setupAjaxForm('openCashForm', 'submitOpenCashBtn', 'submitOpenCashSpinner',
                     'openCash-error-message', '/admin/pagamentos/abrir-caixa');
 
-                // --- ROTAS DINÂMICAS (Corrigidas para {reserva} conforme seu web.php) ---
+                // --- ROTAS DINÂMICAS ({reserva}) ---
 
-                // Finalizar Pagamento de Reserva
+                // Finalizar Pagamento
                 setupAjaxForm('paymentForm', 'submitPaymentBtn', 'submitPaymentSpinner', 'payment-error-message',
                     '/admin/pagamentos/{reserva}/finalizar');
 
-                // Registrar No-Show (Falta)
+                // Registrar No-Show (Falta) - Agora capturado como Ação Crítica
                 setupAjaxForm('noShowForm', 'submitNoShowBtn', 'submitNoShowSpinner', 'noshow-error-message',
                     '/admin/reservas/{reserva}/no-show');
 
@@ -2068,4 +2139,5 @@
             }
         });
     </script>
+
 </x-app-layout>
