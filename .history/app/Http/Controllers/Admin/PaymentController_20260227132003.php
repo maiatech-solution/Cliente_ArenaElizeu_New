@@ -79,20 +79,20 @@ class PaymentController extends Controller
         $searchTerm = $request->input('search');
         $filterDebts = $request->input('filter') === 'debts';
 
-        // 1. GLOBAL: Transações de todas as arenas (Para os cards laterais não zerarem)
+        // 1. GLOBAL: Transações de todas as arenas
         $allTransactionsOfDay = FinancialTransaction::whereDate('paid_at', $dateObject)->get();
 
-        // 2. FILTRADO: Transações da arena selecionada (Para a listagem e saldo do card principal)
+        // 2. FILTRADO: Transações da arena selecionada
         $financialTransactions = FinancialTransaction::whereDate('paid_at', $dateObject)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->with(['reserva', 'manager', 'payer', 'arena'])
             ->orderBy('paid_at', 'desc')
             ->get();
 
-        // 3. SEGUNDO: Pegamos os IDs de reservas que movimentaram dinheiro hoje
+        // 3. IDs de reservas que movimentaram dinheiro hoje
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
 
-        // 4. TERCEIRO: Consulta de Reservas 🎯
+        // 4. Consulta de Reservas
         $query = Reserva::with(['user', 'arena']);
 
         if ($filterDebts) {
@@ -106,7 +106,6 @@ class PaymentController extends Controller
             });
         }
 
-        // Filtros de busca e arena
         if ($selectedArenaId) $query->where('arena_id', $selectedArenaId);
         if ($searchTerm) {
             $query->where(function ($q) use ($searchTerm) {
@@ -120,10 +119,8 @@ class PaymentController extends Controller
             ->orderBy($filterDebts ? 'date' : 'start_time', 'asc')
             ->get();
 
-        // 5. Saldo Líquido Real (Desta arena ou Geral se não houver filtro)
         $totalRecebidoDiaLiquido = $financialTransactions->sum('amount');
 
-        // 6. Lógica de Status do Caixa e Histórico
         $cashierRecord = Cashier::where('date', $selectedDateString)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->first();
@@ -135,7 +132,6 @@ class PaymentController extends Controller
             ->limit(10)
             ->get();
 
-        // 7. Faturamento por Arena
         $arenasAtivas = \App\Models\Arena::all();
         $faturamentoPorArena = $arenasAtivas->map(function ($arena) use ($allTransactionsOfDay) {
             return (object)[
@@ -145,7 +141,7 @@ class PaymentController extends Controller
             ];
         });
 
-        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta os logs de falta no financeiro do dia
+        // 🚫 CORREÇÃO DO NO-SHOW: Conta os logs de falta no financeiro do dia
         $noShowCount = $allTransactionsOfDay
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->filter(function ($t) {
@@ -161,12 +157,9 @@ class PaymentController extends Controller
             'faturamentoPorArena'     => $faturamentoPorArena,
             'cashierStatus'           => $cashierStatus,
             'cashierHistory'          => $cashierHistory,
-
-            // 🟢 MUDANÇA AQUI: Conta tudo que está na lista da tela, sem filtrar data de novo
-            'totalReservasDia'        => $reservas->count(),
-
+            'totalReservasDia'        => $reservas->where('date', $selectedDateString)->count(),
             'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
-            'noShowCount'             => $noShowCount,
+            'noShowCount'             => $noShowCount, // Valor atualizado
             'totalAuthorizedDebt'     => $reservas->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
         ]);
     }
@@ -187,30 +180,6 @@ class PaymentController extends Controller
             $date = $validated['date'];
             $arenaId = $validated['arena_id'];
 
-            // --- 🛡️ VALIDAÇÃO PROFISSIONAL DE PENDÊNCIAS ---
-            // Só travamos se houver reservas CONFIRMADAS ou PENDENTES que JÁ TERMINARAM.
-            // Se for "Dívida Ativa" (Partial) ou "Pago" (Paid), o sistema permite o fechamento.
-            $agora = now();
-            $pendenciasCriticas = \App\Models\Reserva::where('arena_id', $arenaId)
-                ->whereDate('date', $date)
-                ->where('is_fixed', false)
-                ->whereIn('status', ['confirmed', 'pending'])
-                ->where('payment_status', 'unpaid') // Dívida ativa (partial) não trava o caixa
-                ->get()
-                ->filter(function ($r) use ($agora) {
-                    // Monta o Carbon do fim do jogo para comparar com a hora atual
-                    $fimJogo = \Carbon\Carbon::parse($r->date->format('Y-m-d') . ' ' . $r->end_time);
-                    return $agora->greaterThan($fimJogo);
-                });
-
-            if ($pendenciasCriticas->count() > 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "🚨 Bloqueio: Existem {$pendenciasCriticas->count()} jogo(s) finalizados sem definição financeira (Quitado, Falta ou Dívida). Resolva-os para fechar."
-                ], 403);
-            }
-            // ------------------------------------------------
-
             $calculatedSystem = FinancialTransaction::whereDate('paid_at', $date)
                 ->where('arena_id', $arenaId)
                 ->sum('amount');
@@ -219,8 +188,9 @@ class PaymentController extends Controller
             $actual     = round((float)$validated['actual_amount'], 2);
             $difference = round($actual - $calculated, 2);
 
-            // 🚀 REGRA DE AUTORIZAÇÃO DO SUPERVISOR
+            // 🚀 REGRA DE AUTORIZAÇÃO
             if ($difference != 0 && Auth::user()->role === 'colaborador') {
+                // Usamos filled para garantir que o token não seja uma string vazia
                 if (!$request->filled('supervisor_token')) {
                     return response()->json([
                         'success' => false,
@@ -247,7 +217,7 @@ class PaymentController extends Controller
             return response()->json(['success' => true, 'message' => 'Caixa fechado com sucesso!']);
         } catch (\Exception $e) {
             \Log::error("Erro no fechamento: " . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Erro interno.'], 500);
         }
     }
 

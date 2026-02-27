@@ -187,30 +187,6 @@ class PaymentController extends Controller
             $date = $validated['date'];
             $arenaId = $validated['arena_id'];
 
-            // --- 🛡️ VALIDAÇÃO PROFISSIONAL DE PENDÊNCIAS ---
-            // Só travamos se houver reservas CONFIRMADAS ou PENDENTES que JÁ TERMINARAM.
-            // Se for "Dívida Ativa" (Partial) ou "Pago" (Paid), o sistema permite o fechamento.
-            $agora = now();
-            $pendenciasCriticas = \App\Models\Reserva::where('arena_id', $arenaId)
-                ->whereDate('date', $date)
-                ->where('is_fixed', false)
-                ->whereIn('status', ['confirmed', 'pending'])
-                ->where('payment_status', 'unpaid') // Dívida ativa (partial) não trava o caixa
-                ->get()
-                ->filter(function ($r) use ($agora) {
-                    // Monta o Carbon do fim do jogo para comparar com a hora atual
-                    $fimJogo = \Carbon\Carbon::parse($r->date->format('Y-m-d') . ' ' . $r->end_time);
-                    return $agora->greaterThan($fimJogo);
-                });
-
-            if ($pendenciasCriticas->count() > 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "🚨 Bloqueio: Existem {$pendenciasCriticas->count()} jogo(s) finalizados sem definição financeira (Quitado, Falta ou Dívida). Resolva-os para fechar."
-                ], 403);
-            }
-            // ------------------------------------------------
-
             $calculatedSystem = FinancialTransaction::whereDate('paid_at', $date)
                 ->where('arena_id', $arenaId)
                 ->sum('amount');
@@ -219,8 +195,9 @@ class PaymentController extends Controller
             $actual     = round((float)$validated['actual_amount'], 2);
             $difference = round($actual - $calculated, 2);
 
-            // 🚀 REGRA DE AUTORIZAÇÃO DO SUPERVISOR
+            // 🚀 REGRA DE AUTORIZAÇÃO
             if ($difference != 0 && Auth::user()->role === 'colaborador') {
+                // Usamos filled para garantir que o token não seja uma string vazia
                 if (!$request->filled('supervisor_token')) {
                     return response()->json([
                         'success' => false,
@@ -247,7 +224,7 @@ class PaymentController extends Controller
             return response()->json(['success' => true, 'message' => 'Caixa fechado com sucesso!']);
         } catch (\Exception $e) {
             \Log::error("Erro no fechamento: " . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Erro interno.'], 500);
         }
     }
 

@@ -194,35 +194,25 @@
                                     $caixaFechado = \App\Http\Controllers\FinanceiroController::isCashClosed(
                                         $dataReserva,
                                     );
+                                    $status = $reserva->payment_status;
+                                    $estaPago = $status === 'paid' || $reserva->status === 'completed';
 
-                                    // --- LÓGICA DE AUDITORIA FINANCEIRA ---
-                                    $valorTotal = (float) $reserva->price;
-                                    $valorPago = (float) ($reserva->total_paid ?? 0);
-                                    $valorRestante = $valorTotal - $valorPago;
-
-                                    // Define se está pago baseado no saldo real, não apenas no status de texto
-                                    $estaTotalmentePago = $valorPago >= $valorTotal && $valorTotal > 0;
-
-                                    // Definição de Badges de Auditoria
-                                    if ($estaTotalmentePago) {
-                                        $badgeClass = 'bg-green-100 text-green-800 border-green-200';
-                                        $badgeText = 'QUITADO';
-                                    } elseif ($valorPago > 0) {
-                                        $badgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
-                                        $badgeText = 'PARCIAL';
-                                    } else {
-                                        $badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
-                                        $badgeText = 'PENDENTE';
+                                    $isOverdue = false;
+                                    if (!$estaPago && in_array($status, ['pending', 'unpaid', 'partial'])) {
+                                        $reservaEndTime = \Carbon\Carbon::parse($reserva->date)->setTimeFromTimeString(
+                                            $reserva->end_time,
+                                        );
+                                        if ($ePassado || ($eHoje && $reservaEndTime->isPast())) {
+                                            $isOverdue = true;
+                                        }
                                     }
 
-                                    // Alerta de Dívida (Atraso) - Se o horário passou e não quitou
-                                    $reservaEndTime = \Carbon\Carbon::parse($reserva->date)->setTimeFromTimeString(
-                                        $reserva->end_time,
-                                    );
-                                    if (!$estaTotalmentePago && ($ePassado || ($eHoje && $reservaEndTime->isPast()))) {
-                                        $badgeClass = 'bg-red-700 text-white font-bold animate-pulse';
-                                        $badgeText = $valorPago > 0 ? 'DÍVIDA PARCIAL' : 'DÍVIDA TOTAL';
-                                    }
+                                    $badgeClass = $estaPago
+                                        ? 'bg-green-100 text-green-800 border-green-200'
+                                        : ($isOverdue
+                                            ? 'bg-red-700 text-white font-bold animate-pulse'
+                                            : 'bg-blue-100 text-blue-800 border-blue-200');
+                                    $badgeText = $estaPago ? 'Pago' : ($isOverdue ? 'ATRASADO' : 'Pendente');
                                 @endphp
 
                                 <tr
@@ -230,22 +220,21 @@
                                     {{-- DATA/HORA --}}
                                     <td class="px-4 py-3 whitespace-nowrap">
                                         <div class="text-sm font-bold text-gray-900">
-                                            {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/y') }}
-                                        </div>
-                                        <div class="text-indigo-600 text-xs font-semibold">
-                                            {{ $reserva->start_time }} - {{ $reserva->end_time }}
-                                        </div>
+                                            {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/y') }}</div>
+                                        <div class="text-indigo-600 text-xs font-semibold">{{ $reserva->start_time }}
+                                            - {{ $reserva->end_time }}</div>
                                     </td>
 
-                                    {{-- CLIENTE E TIPO --}}
+                                    {{-- CLIENTE E TIPO (DISTINÇÃO) --}}
                                     <td class="px-4 py-3">
                                         <div class="flex items-center space-x-2">
                                             <span
                                                 class="text-sm font-bold text-gray-900">{{ $reserva->client_name ?? 'N/D' }}</span>
+                                            {{-- 🏷️ DISTINÇÃO PONTUAL / RECORRENTE --}}
                                             @if ($reserva->is_recurrent)
                                                 <span
                                                     class="px-1.5 py-0.5 text-[10px] font-black uppercase rounded bg-purple-100 text-purple-700 border border-purple-200"
-                                                    title="Reserva Mensalista">Recorrente</span>
+                                                    title="Reserva Mensalista/Recorrente">Recorrente</span>
                                             @else
                                                 <span
                                                     class="px-1.5 py-0.5 text-[10px] font-black uppercase rounded bg-gray-100 text-gray-600 border border-gray-200"
@@ -263,28 +252,17 @@
                                         </span>
                                     </td>
 
-                                    {{-- PREÇO (AUDITORIA ESPELHO DO CAIXA) --}}
-                                    <td class="px-4 py-3 text-right border-r border-gray-100">
-                                        <div class="text-[10px] text-gray-400 uppercase font-bold">Total: R$
-                                            {{ number_format($valorTotal, 2, ',', '.') }}</div>
-                                        <div class="text-sm font-black text-green-700">Pago: R$
-                                            {{ number_format($valorPago, 2, ',', '.') }}</div>
-                                        @if ($valorRestante > 0)
-                                            <div class="text-[11px] font-bold text-red-600 italic">Falta: R$
-                                                {{ number_format($valorRestante, 2, ',', '.') }}</div>
-                                        @endif
+                                    {{-- PREÇO --}}
+                                    <td class="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">
+                                        R$ {{ number_format($reserva->price, 2, ',', '.') }}
                                     </td>
 
-                                    {{-- PAGAMENTO (STATUS REAL) --}}
+                                    {{-- PAGAMENTO --}}
                                     <td class="px-4 py-3 text-center">
                                         <span
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm border {{ $badgeClass }}">
+                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $badgeClass }}">
                                             {{ $badgeText }}
                                         </span>
-                                        @if ($reserva->payment_method)
-                                            <div class="text-[9px] mt-1 text-gray-500 font-bold uppercase">
-                                                {{ $reserva->payment_method }}</div>
-                                        @endif
                                     </td>
 
                                     {{-- 👤 CRIADA POR --}}
@@ -300,38 +278,57 @@
                                     {{-- AÇÕES --}}
                                     <td class="px-4 py-3">
                                         <div class="flex flex-col space-y-1.5">
+                                            {{-- Botão Detalhes --}}
                                             <a href="{{ route('admin.reservas.show', $reserva) }}"
                                                 class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                 Detalhes
                                             </a>
 
                                             @if (!$caixaFechado)
-                                                @php $valorPagoNumerico = (float) ($reserva->total_paid ?? 0); @endphp
+                                                @php
+                                                    $valorPagoNumerico = (float) ($reserva->total_paid ?? 0);
+                                                @endphp
 
-                                                @if ($reserva->status !== 'no_show' && ($estaTotalmentePago || $valorPagoNumerico > 0))
+                                                {{-- 🎯 BOTÃO LANÇAR FALTA: Só aparece se houver pagamento --}}
+                                                @if ($reserva->status !== 'no_show' && ($estaPago || $valorPagoNumerico > 0))
                                                     <button type="button"
-                                                        onclick="openNoShowModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}', {{ $valorPagoNumerico }})"
+                                                        onclick="openNoShowModal(
+                        {{ $reserva->id }},
+                        '{{ addslashes($reserva->client_name) }}',
+                        {{ $valorPagoNumerico }}
+                    )"
                                                         class="w-full bg-orange-500 hover:bg-orange-600 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                         Lançar Falta
                                                     </button>
                                                 @endif
 
-                                                @if (!$estaTotalmentePago)
+                                                {{-- Botão Pagamento --}}
+                                                @if (!$estaPago)
                                                     <a href="{{ route('admin.payment.index', ['reserva_id' => $reserva->id]) }}"
                                                         class="w-full bg-green-600 hover:bg-green-700 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                         Lançar Pagto
                                                     </a>
                                                 @endif
 
+                                                {{-- Botão Cancelar (Ajustado) --}}
                                                 <button type="button"
-                                                    onclick="openCancellationModal({{ $reserva->id }}, 'PATCH', '{{ route('admin.reservas.cancelar', ':id') }}', 'Deseja realmente cancelar este agendamento {{ $reserva->is_recurrent ? '(MENSALISTA)' : '' }}?', 'Confirmar Cancelamento', {{ $valorPagoNumerico }}, {{ $reserva->is_recurrent ? 'true' : 'false' }})"
+                                                    onclick="openCancellationModal(
+                    {{ $reserva->id }},
+                    'PATCH',
+                    '{{ route('admin.reservas.cancelar', ':id') }}',
+                    'Deseja realmente cancelar este agendamento {{ $reserva->is_recurrent ? '(MENSALISTA)' : '' }}?',
+                    'Confirmar Cancelamento',
+                    {{ $valorPagoNumerico }},
+                    {{ $reserva->is_recurrent ? 'true' : 'false' }}
+                )"
                                                     class="w-full {{ $reserva->is_recurrent ? 'bg-red-800' : 'bg-red-600' }} hover:opacity-90 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm"
                                                     title="{{ $reserva->is_recurrent ? 'Reserva Recorrente' : 'Reserva Pontual' }}">
                                                     Cancelar {{ $reserva->is_recurrent ? 'Série' : '' }}
                                                 </button>
                                             @else
+                                                {{-- Botão Bloqueado (Caixa Fechado) --}}
                                                 <div class="w-full bg-gray-400 text-white py-1.5 text-xs font-bold rounded text-center opacity-75 cursor-not-allowed flex items-center justify-center select-none"
-                                                    title="Bloqueado: O caixa desta data já foi encerrado.">
+                                                    title="Bloqueado: O caixa desta data ({{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }}) já foi encerrado.">
                                                     <svg class="w-3.5 h-3.5 mr-1" fill="none"
                                                         stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -507,223 +504,216 @@
 
 
     <script>
-        (function() {
-            // 1. Verificação de variáveis globais para evitar erro "already declared"
-            if (typeof window.CSRF_TOKEN === 'undefined') {
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                window.CSRF_TOKEN = meta ? meta.getAttribute('content') : null;
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        const CSRF_TOKEN = metaTag ? metaTag.getAttribute('content') : null;
+
+        // URLs de Cancelamento
+        const CANCEL_PONTUAL_URL = '{{ route('admin.reservas.cancelar_pontual', ':id') }}';
+        const CANCEL_SERIE_URL = '{{ route('admin.reservas.cancelar_serie', ':id') }}';
+        const CANCEL_PADRAO_URL = '{{ route('admin.reservas.cancelar', ':id') }}';
+
+        // 🚩 URL de Falta (No-Show)
+        const NO_SHOW_URL = '{{ route('admin.reservas.no_show', ':id') }}';
+
+        // Variáveis de Controle Global
+        let currentReservaId = null;
+        let currentTotalPaid = 0;
+        let currentMethod = null;
+        let currentUrlBase = null;
+
+        // --- FUNÇÕES DO MODAL DE CANCELAMENTO ---
+        function openCancellationModal(reservaId, method, urlBase, message, buttonText, totalPaid = 0, isRecurrent =
+        false) {
+            currentReservaId = reservaId;
+            currentMethod = method;
+            currentUrlBase = urlBase;
+            currentTotalPaid = totalPaid;
+
+            document.getElementById('cancellation-reason-input').value = '';
+            if (document.getElementById('should_refund')) document.getElementById('should_refund').checked = false;
+            document.getElementById('modal-message').textContent = message;
+            document.getElementById('confirm-cancellation-btn').textContent = buttonText;
+
+            const refundSection = document.getElementById('refund-section');
+            if (totalPaid > 0 && refundSection) {
+                refundSection.classList.remove('hidden');
+                document.getElementById('paid-value-display').textContent = parseFloat(totalPaid).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                });
+            } else if (refundSection) {
+                refundSection.classList.add('hidden');
             }
 
-            // Usamos uma constante interna ao escopo para evitar conflito com o layout
-            const currentRole = '{{ auth()->user()->role }}';
+            const recurrentSection = document.getElementById('recurrent-options');
+            if (isRecurrent && recurrentSection) {
+                recurrentSection.classList.remove('hidden');
+            } else if (recurrentSection) {
+                recurrentSection.classList.add('hidden');
+            }
 
-            // URLs de Cancelamento
-            const CANCEL_PONTUAL_URL = '{{ route('admin.reservas.cancelar_pontual', ':id') }}';
-            const CANCEL_SERIE_URL = '{{ route('admin.reservas.cancelar_serie', ':id') }}';
-            const CANCEL_PADRAO_URL = '{{ route('admin.reservas.cancelar', ':id') }}';
-            const NO_SHOW_URL = '{{ route('admin.reservas.no_show', ':id') }}';
+            const modal = document.getElementById('cancellation-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => document.getElementById('cancellation-modal-content').classList.remove('opacity-0',
+                'scale-95'), 10);
+        }
 
-            // Variáveis de Controle
-            let currentReservaId = null;
-            let currentTotalPaid = 0;
-            let currentMethod = null;
-            let currentUrlBase = null;
-
-            // --- FUNÇÕES DOS MODAIS (Disponibilizadas globalmente) ---
-            window.openCancellationModal = function(reservaId, method, urlBase, message, buttonText, totalPaid = 0,
-                isRecurrent = false) {
-                currentReservaId = reservaId;
-                currentMethod = method;
-                currentUrlBase = urlBase;
-                currentTotalPaid = totalPaid;
-
-                document.getElementById('cancellation-reason-input').value = '';
-                if (document.getElementById('should_refund')) document.getElementById('should_refund').checked =
-                    false;
-                document.getElementById('modal-message').textContent = message;
-                document.getElementById('confirm-cancellation-btn').textContent = buttonText;
-
-                const refundSection = document.getElementById('refund-section');
-                if (totalPaid > 0 && refundSection) {
-                    refundSection.classList.remove('hidden');
-                    document.getElementById('paid-value-display').textContent = parseFloat(totalPaid)
-                        .toLocaleString('pt-BR', {
-                            minimumFractionDigits: 2
-                        });
-                } else if (refundSection) {
-                    refundSection.classList.add('hidden');
-                }
-
-                const recurrentSection = document.getElementById('recurrent-options');
-                if (isRecurrent && recurrentSection) {
-                    recurrentSection.classList.remove('hidden');
-                } else if (recurrentSection) {
-                    recurrentSection.classList.add('hidden');
-                }
-
+        function closeCancellationModal() {
+            document.getElementById('cancellation-modal-content').classList.add('opacity-0', 'scale-95');
+            setTimeout(() => {
                 const modal = document.getElementById('cancellation-modal');
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                setTimeout(() => document.getElementById('cancellation-modal-content').classList.remove('opacity-0',
-                    'scale-95'), 10);
-            };
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }, 300);
+        }
 
-            window.closeCancellationModal = function() {
-                document.getElementById('cancellation-modal-content').classList.add('opacity-0', 'scale-95');
-                setTimeout(() => {
-                    const modal = document.getElementById('cancellation-modal');
-                    modal.classList.remove('flex');
-                    modal.classList.add('hidden');
-                }, 300);
-            };
+        // --- 🚩 FUNÇÕES DO MODAL DE FALTA (NO-SHOW) ---
+        function openNoShowModal(reservaId, clientName, totalPaid) {
+            currentReservaId = reservaId;
+            currentTotalPaid = parseFloat(totalPaid);
 
-            window.openNoShowModal = function(reservaId, clientName, totalPaid) {
-                currentReservaId = reservaId;
-                currentTotalPaid = parseFloat(totalPaid);
-                document.getElementById('no-show-reason-input').value = '';
-                document.getElementById('should_refund_no_show').value = 'false';
-                document.getElementById('customNoShowRefundDiv').classList.add('hidden');
+            document.getElementById('no-show-reason-input').value = '';
+            document.getElementById('should_refund_no_show').value = 'false';
+            document.getElementById('customNoShowRefundDiv').classList.add('hidden');
 
-                const refundArea = document.getElementById('no-show-refund-area');
-                if (currentTotalPaid > 0) {
-                    refundArea.classList.remove('hidden');
-                    document.getElementById('no-show-paid-amount-display').textContent = currentTotalPaid
-                        .toLocaleString('pt-BR', {
-                            minimumFractionDigits: 2
-                        });
-                    document.getElementById('custom_no_show_refund_amount').value = currentTotalPaid.toFixed(2);
-                } else {
-                    refundArea.classList.add('hidden');
-                }
-
-                const modal = document.getElementById('no-show-modal');
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                setTimeout(() => document.getElementById('no-show-modal-content').classList.remove('opacity-0',
-                    'scale-95'), 10);
-            };
-
-            window.closeNoShowModal = function() {
-                document.getElementById('no-show-modal-content').classList.add('opacity-0', 'scale-95');
-                setTimeout(() => {
-                    const modal = document.getElementById('no-show-modal');
-                    modal.classList.remove('flex');
-                    modal.classList.add('hidden');
-                }, 300);
-            };
-
-            window.toggleNoShowRefundInput = function() {
-                const shouldRefund = document.getElementById('should_refund_no_show').value === 'true';
-                document.getElementById('customNoShowRefundDiv').classList.toggle('hidden', !shouldRefund);
-            };
-
-            // --- LÓGICA DE EXECUÇÃO ---
-            async function proceedWithRequest(url, method, data, button, originalText) {
-                button.disabled = true;
-                button.textContent = 'Processando...';
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST', // Sempre POST no fetch para permitir o Spoofing do Laravel
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': window.CSRF_TOKEN,
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            ...data,
-                            _token: window.CSRF_TOKEN,
-                            _method: method // O Laravel lê este campo para saber se é PATCH ou DELETE
-                        })
+            const refundArea = document.getElementById('no-show-refund-area');
+            if (currentTotalPaid > 0) {
+                refundArea.classList.remove('hidden');
+                document.getElementById('no-show-paid-amount-display').textContent = currentTotalPaid.toLocaleString(
+                    'pt-BR', {
+                        minimumFractionDigits: 2
                     });
-                    const result = await response.json();
-                    if (response.ok) {
-                        alert(result.message || "Operação realizada!");
-                        window.location.reload();
-                    } else {
-                        alert(result.message || "Erro ao processar.");
-                        button.disabled = false;
-                        button.textContent = originalText;
+                document.getElementById('custom_no_show_refund_amount').value = currentTotalPaid.toFixed(2);
+            } else {
+                refundArea.classList.add('hidden');
+            }
+
+            const modal = document.getElementById('no-show-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => document.getElementById('no-show-modal-content').classList.remove('opacity-0', 'scale-95'),
+            10);
+        }
+
+        function closeNoShowModal() {
+            document.getElementById('no-show-modal-content').classList.add('opacity-0', 'scale-95');
+            setTimeout(() => {
+                const modal = document.getElementById('no-show-modal');
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        function toggleNoShowRefundInput() {
+            const shouldRefund = document.getElementById('should_refund_no_show').value === 'true';
+            document.getElementById('customNoShowRefundDiv').classList.toggle('hidden', !shouldRefund);
+        }
+
+        // --- PROCESSAMENTO DAS REQUISIÇÕES ---
+        document.addEventListener('DOMContentLoaded', function() {
+
+            // 1. Clique Confirmar Cancelamento
+            const confirmCancelBtn = document.getElementById('confirm-cancellation-btn');
+            if (confirmCancelBtn) {
+                confirmCancelBtn.addEventListener('click', function() {
+                    const reason = document.getElementById('cancellation-reason-input').value.trim();
+                    const shouldRefund = document.getElementById('should_refund') ? document.getElementById(
+                        'should_refund').checked : false;
+
+                    if (reason.length < 5) {
+                        alert("Descreva o motivo (mínimo 5 caracteres).");
+                        return;
                     }
-                } catch (e) {
-                    alert("Erro de conexão.");
+
+                    let url = currentUrlBase;
+                    let method = 'POST'; // Forçamos POST para rotas Route::post do Laravel
+                    const recurrentSection = document.getElementById('recurrent-options');
+
+                    if (recurrentSection && !recurrentSection.classList.contains('hidden')) {
+                        const tipo = document.querySelector('input[name="cancel_type"]:checked').value;
+                        if (tipo === 'pontual') {
+                            url = CANCEL_PONTUAL_URL;
+                            method =
+                            'PATCH'; // Aqui usamos spoofing pois a rota de cancelamento pontual geralmente é PATCH
+                        } else {
+                            url = CANCEL_SERIE_URL;
+                            method = 'DELETE'; // Aqui usamos spoofing para DELETE
+                        }
+                    }
+
+                    executeAjax(url.replace(':id', currentReservaId), method, {
+                        cancellation_reason: reason,
+                        should_refund: shouldRefund ? 1 : 0,
+                        paid_amount_ref: currentTotalPaid
+                    }, confirmCancelBtn);
+                });
+            }
+
+            // 2. Clique Confirmar Falta (No-Show)
+            const confirmNoShowBtn = document.getElementById('confirm-no-show-btn');
+            if (confirmNoShowBtn) {
+                confirmNoShowBtn.addEventListener('click', function() {
+                    const reason = document.getElementById('no-show-reason-input').value.trim();
+                    const shouldRefund = document.getElementById('should_refund_no_show').value === 'true';
+                    const refundAmount = parseFloat(document.getElementById('custom_no_show_refund_amount')
+                        .value) || 0;
+
+                    if (reason.length < 5) {
+                        alert("Descreva o motivo da falta.");
+                        return;
+                    }
+                    if (shouldRefund && refundAmount > currentTotalPaid) {
+                        alert("Valor de estorno inválido.");
+                        return;
+                    }
+
+                    // CORREÇÃO AQUI: Mudamos de 'PATCH' para 'POST' para bater com seu Route::post do web.php
+                    executeAjax(NO_SHOW_URL.replace(':id', currentReservaId), 'POST', {
+                        no_show_reason: reason,
+                        should_refund: shouldRefund,
+                        refund_amount: refundAmount,
+                        block_user: true
+                    }, confirmNoShowBtn);
+                });
+            }
+        });
+
+        // Função auxiliar para evitar repetição de código Fetch
+        async function executeAjax(url, method, data, button) {
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Processando...';
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF_TOKEN,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ...data,
+                        _token: CSRF_TOKEN,
+                        _method: method
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message || "Operação realizada!");
+                    window.location.reload();
+                } else {
+                    alert(result.message || "Erro ao processar.");
                     button.disabled = false;
                     button.textContent = originalText;
                 }
+            } catch (e) {
+                alert("Erro de conexão.");
+                button.disabled = false;
+                button.textContent = originalText;
             }
-
-            async function executeAjax(url, method, data, button) {
-                const originalText = button.textContent;
-                // 🛡️ Trava para Colaborador
-                if (currentRole === 'colaborador') {
-                    const autorizar = window.requisitarAutorizacao || requisitarAutorizacao;
-                    if (typeof autorizar === 'function') {
-                        autorizar(token => {
-                            if (token) proceedWithRequest(url, method, data, button, originalText);
-                        });
-                    } else {
-                        alert("Erro: Sistema de autorização não carregado corretamente.");
-                    }
-                } else {
-                    proceedWithRequest(url, method, data, button, originalText);
-                }
-            }
-
-            document.addEventListener('DOMContentLoaded', function() {
-                const confirmCancelBtn = document.getElementById('confirm-cancellation-btn');
-                if (confirmCancelBtn) {
-                    confirmCancelBtn.addEventListener('click', function() {
-                        const reason = document.getElementById('cancellation-reason-input').value
-                            .trim();
-                        if (reason.length < 5) return alert("Descreva o motivo (mínimo 5 caracteres).");
-
-                        let url = currentUrlBase;
-                        let method = currentMethod;
-                        const recurrentSection = document.getElementById('recurrent-options');
-
-                        if (recurrentSection && !recurrentSection.classList.contains('hidden')) {
-                            const tipo = document.querySelector('input[name="cancel_type"]:checked')
-                                .value;
-                            if (tipo === 'pontual') {
-                                url = CANCEL_PONTUAL_URL;
-                                method = 'PATCH';
-                            } else {
-                                url = CANCEL_SERIE_URL;
-                                method = 'DELETE';
-                            }
-                        }
-
-                        executeAjax(url.replace(':id', currentReservaId), method, {
-                            cancellation_reason: reason,
-                            should_refund: document.getElementById('should_refund')?.checked ?
-                                1 : 0,
-                            paid_amount_ref: currentTotalPaid
-                        }, confirmCancelBtn);
-                    });
-                }
-
-                const confirmNoShowBtn = document.getElementById('confirm-no-show-btn');
-                if (confirmNoShowBtn) {
-                    confirmNoShowBtn.addEventListener('click', function() {
-                        const reason = document.getElementById('no-show-reason-input').value.trim();
-                        const shouldRefund = document.getElementById('should_refund_no_show').value ===
-                            'true';
-                        const refundAmount = parseFloat(document.getElementById(
-                            'custom_no_show_refund_amount').value) || 0;
-
-                        if (reason.length < 5) return alert("Descreva o motivo da falta.");
-                        if (shouldRefund && refundAmount > currentTotalPaid) return alert(
-                            "Valor de estorno inválido.");
-
-                        executeAjax(NO_SHOW_URL.replace(':id', currentReservaId), 'POST', {
-                            no_show_reason: reason,
-                            should_refund: shouldRefund,
-                            refund_amount: refundAmount,
-                            block_user: true
-                        }, confirmNoShowBtn);
-                    });
-                }
-            });
-        })();
+        }
     </script>
 </x-app-layout>

@@ -577,7 +577,7 @@
                                             'no_show',
                                             'canceled',
                                             'rejected',
-                                            //'completed',
+                                            'completed',
                                         ]);
                                         $canBeDebt =
                                             $restante > 0 &&
@@ -2099,6 +2099,7 @@
 
                 if (!btn || !statusEl) return;
 
+                // 1. Bloqueio por falta de filtro
                 if (!isFiltered) {
                     btn.disabled = true;
                     statusEl.innerHTML = "👈 Selecione uma Arena";
@@ -2106,41 +2107,41 @@
                     return;
                 }
 
-                const rows = document.querySelectorAll('table tbody tr');
-                let pendenciasCount = 0;
+                // 2. BUSCA INTELIGENTE: Ignora linhas que já são Dívida Ativa
+                const botoesAcao = Array.from(document.querySelectorAll('table tbody tr'))
+                    .filter(tr => {
+                        const txtLinha = tr.innerText.toUpperCase();
 
-                rows.forEach(tr => {
-                    const txtLinha = tr.innerText.toUpperCase();
+                        // Se a linha já diz "DÍVIDA ATIVA", nós ignoramos as ações dela
+                        if (txtLinha.includes('DÍVIDA ATIVA')) {
+                            return false;
+                        }
 
-                    // 1. Ignoramos apenas o que já é irreversível ou resolvido
-                    const isResolvido = txtLinha.includes('DÍVIDA ATIVA') ||
-                        txtLinha.includes('QUITADO') ||
-                        txtLinha.includes('CANCELADO');
-
-                    if (!isResolvido) {
-                        // 2. Se não está resolvido, procuramos botões de ação ativos
-                        const botoes = tr.querySelectorAll('button:not([disabled]), a:not([disabled])');
-                        let temAcaoPendente = false;
+                        // Caso contrário, verificamos se existem botões de pendência real
+                        const botoes = tr.querySelectorAll('a, button');
+                        let temPendencia = false;
 
                         botoes.forEach(el => {
                             const txtBotao = el.innerText.toUpperCase();
-                            // Se tiver qualquer um desses botões, o caixa NÃO pode fechar
-                            if (txtBotao.includes('BAIXAR') || txtBotao.includes('DEPOIS') || txtBotao
-                                .includes('FALTA')) {
-                                temAcaoPendente = true;
+                            if (txtBotao.includes('BAIXAR') || txtBotao.includes('DEPOIS') || txtBotao.includes(
+                                    'FALTA')) {
+                                temPendencia = true;
                             }
                         });
 
-                        if (temAcaoPendente) pendenciasCount++;
-                    }
-                });
+                        return temPendencia;
+                    });
+
+                const pendenciasCount = botoesAcao.length;
 
                 if (pendenciasCount > 0) {
+                    // TRAVA TOTAL se houver jogos esquecidos sem decisão
                     btn.disabled = true;
                     btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    statusEl.innerHTML = `🚨 PENDÊNCIA: ${pendenciasCount} jogo(s) aguardando decisão`;
+                    statusEl.innerHTML = `🚨 PENDÊNCIAS: ${pendenciasCount} jogo(s) aberto(s)`;
                     statusEl.className = "text-red-600 font-black text-xs uppercase animate-pulse";
                 } else {
+                    // LIBERA se todos os jogos estiverem QUITADOS ou como DÍVIDA ATIVA
                     btn.disabled = false;
                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
                     statusEl.innerHTML = "✅ Arena pronta para fechar!";
@@ -2245,8 +2246,7 @@
                     };
 
                     const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm',
-                        'closeCashForm'
-                    ];
+                    'closeCashForm'];
                     if (acoesCriticas.includes(formId) && userRole === 'colaborador') {
                         window.requisitarAutorizacao(token => {
                             if (token) enviarParaOServidor(token);

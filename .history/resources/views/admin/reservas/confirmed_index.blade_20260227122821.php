@@ -194,35 +194,25 @@
                                     $caixaFechado = \App\Http\Controllers\FinanceiroController::isCashClosed(
                                         $dataReserva,
                                     );
+                                    $status = $reserva->payment_status;
+                                    $estaPago = $status === 'paid' || $reserva->status === 'completed';
 
-                                    // --- LÓGICA DE AUDITORIA FINANCEIRA ---
-                                    $valorTotal = (float) $reserva->price;
-                                    $valorPago = (float) ($reserva->total_paid ?? 0);
-                                    $valorRestante = $valorTotal - $valorPago;
-
-                                    // Define se está pago baseado no saldo real, não apenas no status de texto
-                                    $estaTotalmentePago = $valorPago >= $valorTotal && $valorTotal > 0;
-
-                                    // Definição de Badges de Auditoria
-                                    if ($estaTotalmentePago) {
-                                        $badgeClass = 'bg-green-100 text-green-800 border-green-200';
-                                        $badgeText = 'QUITADO';
-                                    } elseif ($valorPago > 0) {
-                                        $badgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
-                                        $badgeText = 'PARCIAL';
-                                    } else {
-                                        $badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
-                                        $badgeText = 'PENDENTE';
+                                    $isOverdue = false;
+                                    if (!$estaPago && in_array($status, ['pending', 'unpaid', 'partial'])) {
+                                        $reservaEndTime = \Carbon\Carbon::parse($reserva->date)->setTimeFromTimeString(
+                                            $reserva->end_time,
+                                        );
+                                        if ($ePassado || ($eHoje && $reservaEndTime->isPast())) {
+                                            $isOverdue = true;
+                                        }
                                     }
 
-                                    // Alerta de Dívida (Atraso) - Se o horário passou e não quitou
-                                    $reservaEndTime = \Carbon\Carbon::parse($reserva->date)->setTimeFromTimeString(
-                                        $reserva->end_time,
-                                    );
-                                    if (!$estaTotalmentePago && ($ePassado || ($eHoje && $reservaEndTime->isPast()))) {
-                                        $badgeClass = 'bg-red-700 text-white font-bold animate-pulse';
-                                        $badgeText = $valorPago > 0 ? 'DÍVIDA PARCIAL' : 'DÍVIDA TOTAL';
-                                    }
+                                    $badgeClass = $estaPago
+                                        ? 'bg-green-100 text-green-800 border-green-200'
+                                        : ($isOverdue
+                                            ? 'bg-red-700 text-white font-bold animate-pulse'
+                                            : 'bg-blue-100 text-blue-800 border-blue-200');
+                                    $badgeText = $estaPago ? 'Pago' : ($isOverdue ? 'ATRASADO' : 'Pendente');
                                 @endphp
 
                                 <tr
@@ -230,22 +220,21 @@
                                     {{-- DATA/HORA --}}
                                     <td class="px-4 py-3 whitespace-nowrap">
                                         <div class="text-sm font-bold text-gray-900">
-                                            {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/y') }}
-                                        </div>
-                                        <div class="text-indigo-600 text-xs font-semibold">
-                                            {{ $reserva->start_time }} - {{ $reserva->end_time }}
-                                        </div>
+                                            {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/y') }}</div>
+                                        <div class="text-indigo-600 text-xs font-semibold">{{ $reserva->start_time }}
+                                            - {{ $reserva->end_time }}</div>
                                     </td>
 
-                                    {{-- CLIENTE E TIPO --}}
+                                    {{-- CLIENTE E TIPO (DISTINÇÃO) --}}
                                     <td class="px-4 py-3">
                                         <div class="flex items-center space-x-2">
                                             <span
                                                 class="text-sm font-bold text-gray-900">{{ $reserva->client_name ?? 'N/D' }}</span>
+                                            {{-- 🏷️ DISTINÇÃO PONTUAL / RECORRENTE --}}
                                             @if ($reserva->is_recurrent)
                                                 <span
                                                     class="px-1.5 py-0.5 text-[10px] font-black uppercase rounded bg-purple-100 text-purple-700 border border-purple-200"
-                                                    title="Reserva Mensalista">Recorrente</span>
+                                                    title="Reserva Mensalista/Recorrente">Recorrente</span>
                                             @else
                                                 <span
                                                     class="px-1.5 py-0.5 text-[10px] font-black uppercase rounded bg-gray-100 text-gray-600 border border-gray-200"
@@ -263,28 +252,17 @@
                                         </span>
                                     </td>
 
-                                    {{-- PREÇO (AUDITORIA ESPELHO DO CAIXA) --}}
-                                    <td class="px-4 py-3 text-right border-r border-gray-100">
-                                        <div class="text-[10px] text-gray-400 uppercase font-bold">Total: R$
-                                            {{ number_format($valorTotal, 2, ',', '.') }}</div>
-                                        <div class="text-sm font-black text-green-700">Pago: R$
-                                            {{ number_format($valorPago, 2, ',', '.') }}</div>
-                                        @if ($valorRestante > 0)
-                                            <div class="text-[11px] font-bold text-red-600 italic">Falta: R$
-                                                {{ number_format($valorRestante, 2, ',', '.') }}</div>
-                                        @endif
+                                    {{-- PREÇO --}}
+                                    <td class="px-4 py-3 text-right font-bold text-green-700 whitespace-nowrap">
+                                        R$ {{ number_format($reserva->price, 2, ',', '.') }}
                                     </td>
 
-                                    {{-- PAGAMENTO (STATUS REAL) --}}
+                                    {{-- PAGAMENTO --}}
                                     <td class="px-4 py-3 text-center">
                                         <span
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm border {{ $badgeClass }}">
+                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $badgeClass }}">
                                             {{ $badgeText }}
                                         </span>
-                                        @if ($reserva->payment_method)
-                                            <div class="text-[9px] mt-1 text-gray-500 font-bold uppercase">
-                                                {{ $reserva->payment_method }}</div>
-                                        @endif
                                     </td>
 
                                     {{-- 👤 CRIADA POR --}}
@@ -300,38 +278,57 @@
                                     {{-- AÇÕES --}}
                                     <td class="px-4 py-3">
                                         <div class="flex flex-col space-y-1.5">
+                                            {{-- Botão Detalhes --}}
                                             <a href="{{ route('admin.reservas.show', $reserva) }}"
                                                 class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                 Detalhes
                                             </a>
 
                                             @if (!$caixaFechado)
-                                                @php $valorPagoNumerico = (float) ($reserva->total_paid ?? 0); @endphp
+                                                @php
+                                                    $valorPagoNumerico = (float) ($reserva->total_paid ?? 0);
+                                                @endphp
 
-                                                @if ($reserva->status !== 'no_show' && ($estaTotalmentePago || $valorPagoNumerico > 0))
+                                                {{-- 🎯 BOTÃO LANÇAR FALTA: Só aparece se houver pagamento --}}
+                                                @if ($reserva->status !== 'no_show' && ($estaPago || $valorPagoNumerico > 0))
                                                     <button type="button"
-                                                        onclick="openNoShowModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}', {{ $valorPagoNumerico }})"
+                                                        onclick="openNoShowModal(
+                        {{ $reserva->id }},
+                        '{{ addslashes($reserva->client_name) }}',
+                        {{ $valorPagoNumerico }}
+                    )"
                                                         class="w-full bg-orange-500 hover:bg-orange-600 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                         Lançar Falta
                                                     </button>
                                                 @endif
 
-                                                @if (!$estaTotalmentePago)
+                                                {{-- Botão Pagamento --}}
+                                                @if (!$estaPago)
                                                     <a href="{{ route('admin.payment.index', ['reserva_id' => $reserva->id]) }}"
                                                         class="w-full bg-green-600 hover:bg-green-700 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm">
                                                         Lançar Pagto
                                                     </a>
                                                 @endif
 
+                                                {{-- Botão Cancelar (Ajustado) --}}
                                                 <button type="button"
-                                                    onclick="openCancellationModal({{ $reserva->id }}, 'PATCH', '{{ route('admin.reservas.cancelar', ':id') }}', 'Deseja realmente cancelar este agendamento {{ $reserva->is_recurrent ? '(MENSALISTA)' : '' }}?', 'Confirmar Cancelamento', {{ $valorPagoNumerico }}, {{ $reserva->is_recurrent ? 'true' : 'false' }})"
+                                                    onclick="openCancellationModal(
+                    {{ $reserva->id }},
+                    'PATCH',
+                    '{{ route('admin.reservas.cancelar', ':id') }}',
+                    'Deseja realmente cancelar este agendamento {{ $reserva->is_recurrent ? '(MENSALISTA)' : '' }}?',
+                    'Confirmar Cancelamento',
+                    {{ $valorPagoNumerico }},
+                    {{ $reserva->is_recurrent ? 'true' : 'false' }}
+                )"
                                                     class="w-full {{ $reserva->is_recurrent ? 'bg-red-800' : 'bg-red-600' }} hover:opacity-90 text-white py-1.5 text-xs font-bold rounded text-center transition duration-150 shadow-sm"
                                                     title="{{ $reserva->is_recurrent ? 'Reserva Recorrente' : 'Reserva Pontual' }}">
                                                     Cancelar {{ $reserva->is_recurrent ? 'Série' : '' }}
                                                 </button>
                                             @else
+                                                {{-- Botão Bloqueado (Caixa Fechado) --}}
                                                 <div class="w-full bg-gray-400 text-white py-1.5 text-xs font-bold rounded text-center opacity-75 cursor-not-allowed flex items-center justify-center select-none"
-                                                    title="Bloqueado: O caixa desta data já foi encerrado.">
+                                                    title="Bloqueado: O caixa desta data ({{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }}) já foi encerrado.">
                                                     <svg class="w-3.5 h-3.5 mr-1" fill="none"
                                                         stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -623,7 +620,7 @@
                 button.textContent = 'Processando...';
                 try {
                     const response = await fetch(url, {
-                        method: 'POST', // Sempre POST no fetch para permitir o Spoofing do Laravel
+                        method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': window.CSRF_TOKEN,
@@ -633,7 +630,7 @@
                         body: JSON.stringify({
                             ...data,
                             _token: window.CSRF_TOKEN,
-                            _method: method // O Laravel lê este campo para saber se é PATCH ou DELETE
+                            _method: method
                         })
                     });
                     const result = await response.json();
@@ -656,9 +653,8 @@
                 const originalText = button.textContent;
                 // 🛡️ Trava para Colaborador
                 if (currentRole === 'colaborador') {
-                    const autorizar = window.requisitarAutorizacao || requisitarAutorizacao;
-                    if (typeof autorizar === 'function') {
-                        autorizar(token => {
+                    if (typeof window.requisitarAutorizacao === 'function') {
+                        window.requisitarAutorizacao(token => {
                             if (token) proceedWithRequest(url, method, data, button, originalText);
                         });
                     } else {
@@ -674,11 +670,11 @@
                 if (confirmCancelBtn) {
                     confirmCancelBtn.addEventListener('click', function() {
                         const reason = document.getElementById('cancellation-reason-input').value
-                            .trim();
+                    .trim();
                         if (reason.length < 5) return alert("Descreva o motivo (mínimo 5 caracteres).");
 
                         let url = currentUrlBase;
-                        let method = currentMethod;
+                        let method = 'POST';
                         const recurrentSection = document.getElementById('recurrent-options');
 
                         if (recurrentSection && !recurrentSection.classList.contains('hidden')) {

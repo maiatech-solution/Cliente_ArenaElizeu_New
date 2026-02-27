@@ -577,7 +577,7 @@ class ReservaController extends Controller
      */
     public function cancelSeries(int $masterId, string $reason, bool $shouldRefund, float $amountPaidRef)
     {
-        $today = \Carbon\Carbon::today();
+        $today = \Carbon\Carbon::today()->toDateString();
         $managerId = \Illuminate\Support\Facades\Auth::id();
         $cancelledCount = 0;
         $messageFinance = "";
@@ -588,7 +588,7 @@ class ReservaController extends Controller
                 ->orWhere('id', $masterId);
         })
             ->where('is_fixed', false)
-            ->whereDate('date', '>=', $today->toDateString())
+            ->whereDate('date', '>=', $today)
             ->get();
 
         // 2. Localiza a reserva mestre para referência de Arena/Usuário
@@ -601,6 +601,7 @@ class ReservaController extends Controller
         // --- 💰 PASSO FINANCEIRO ANTECIPADO (BLINDAGEM TOTAL) ---
         if ($amountPaidRef > 0) {
             // Verificamos se JÁ EXISTE um estorno para este MasterId no dia de hoje
+            // Isso impede o estorno duplicado caso o cancelamento individual tenha ocorrido segundos antes
             $jaEstornado = \App\Models\FinancialTransaction::where('reserva_id', $masterId)
                 ->where('type', \App\Models\FinancialTransaction::TYPE_REFUND)
                 ->whereDate('paid_at', \Carbon\Carbon::today())
@@ -620,6 +621,7 @@ class ReservaController extends Controller
                 ]);
                 $messageFinance = " O valor de R$ " . number_format($amountPaidRef, 2, ',', '.') . " foi estornado do caixa.";
             } elseif (!$shouldRefund && !$jaEstornado) {
+                // Se não for estornar, apenas registra a retenção se já não houver transação
                 \App\Models\FinancialTransaction::create([
                     'reserva_id'     => $masterId,
                     'arena_id'       => $anchorReserva->arena_id,
@@ -645,15 +647,10 @@ class ReservaController extends Controller
                 continue;
             }
 
-            // 🛡️ CORREÇÃO CRÍTICA: Extração limpa da hora para evitar "Double Date"
-            // Convertemos para string garantindo que pegamos apenas H:i:s
-            $horaLimpa = $slot->start_time instanceof \Carbon\Carbon ? $slot->start_time->format('H:i:s') : date('H:i:s', strtotime($slot->start_time));
-            $dataLimpa = $slot->date instanceof \Carbon\Carbon ? $slot->date->format('Y-m-d') : $slot->date;
+            $slotStartDateTime = \Carbon\Carbon::parse($slot->date->format('Y-m-d') . ' ' . $slot->start_time);
 
-            $slotStartDateTime = \Carbon\Carbon::parse($dataLimpa . ' ' . $horaLimpa);
-
-            // Não cancela jogos que já passaram hoje ou no passado
-            if ($slotStartDateTime->isPast()) {
+            // Não cancela jogos que já passaram hoje
+            if ($slotStartDateTime->isPast() && $slot->date->isToday()) {
                 continue;
             }
 
@@ -668,6 +665,7 @@ class ReservaController extends Controller
             $this->recreateFixedSlot($slot);
 
             // 3. Limpa transações de sinal/pagamento individuais para não poluir o histórico
+            // (O estorno/retenção mestre feito acima é o que vale para o caixa)
             \App\Models\FinancialTransaction::where('reserva_id', $slot->id)
                 ->whereIn('type', [
                     \App\Models\FinancialTransaction::TYPE_SIGNAL,

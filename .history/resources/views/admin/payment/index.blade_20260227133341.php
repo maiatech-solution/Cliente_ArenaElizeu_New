@@ -2099,6 +2099,7 @@
 
                 if (!btn || !statusEl) return;
 
+                // 1. Bloqueio por falta de filtro
                 if (!isFiltered) {
                     btn.disabled = true;
                     statusEl.innerHTML = "👈 Selecione uma Arena";
@@ -2106,39 +2107,42 @@
                     return;
                 }
 
-                const rows = document.querySelectorAll('table tbody tr');
-                let pendenciasCount = 0;
-
-                rows.forEach(tr => {
+                // 2. BUSCA INTELIGENTE: Varre as linhas da tabela
+                const pendenciasReais = Array.from(document.querySelectorAll('table tbody tr')).filter(tr => {
                     const txtLinha = tr.innerText.toUpperCase();
 
-                    // 1. Ignoramos apenas o que já é irreversível ou resolvido
-                    const isResolvido = txtLinha.includes('DÍVIDA ATIVA') ||
-                        txtLinha.includes('QUITADO') ||
-                        txtLinha.includes('CANCELADO');
-
-                    if (!isResolvido) {
-                        // 2. Se não está resolvido, procuramos botões de ação ativos
-                        const botoes = tr.querySelectorAll('button:not([disabled]), a:not([disabled])');
-                        let temAcaoPendente = false;
-
-                        botoes.forEach(el => {
-                            const txtBotao = el.innerText.toUpperCase();
-                            // Se tiver qualquer um desses botões, o caixa NÃO pode fechar
-                            if (txtBotao.includes('BAIXAR') || txtBotao.includes('DEPOIS') || txtBotao
-                                .includes('FALTA')) {
-                                temAcaoPendente = true;
-                            }
-                        });
-
-                        if (temAcaoPendente) pendenciasCount++;
+                    // 🛡️ REGRA DE OURO: Se o status visual já é um desses, NÃO é pendência.
+                    // Isso ignora o Romulo (Dívida) e qualquer um que já pagou ou faltou.
+                    if (txtLinha.includes('DÍVIDA ATIVA') ||
+                        txtLinha.includes('PAGO') ||
+                        txtLinha.includes('CANCELADO') ||
+                        txtLinha.includes('FALTA') ||
+                        txtLinha.includes('QUITADO')) {
+                        return false;
                     }
+
+                    // 3. Verificação de Horário (Opcional, mas profissional)
+                    // Só travamos se o botão de ação existir E a linha não for de um jogo futuro
+                    const botoes = tr.querySelectorAll('button:not([disabled]), a:not([disabled])');
+                    let temBotaoAtivo = false;
+
+                    botoes.forEach(el => {
+                        const txtBotao = el.innerText.toUpperCase();
+                        if (txtBotao.includes('BAIXAR') || txtBotao.includes('DEPOIS') || txtBotao.includes(
+                                'FALTA')) {
+                            temBotaoAtivo = true;
+                        }
+                    });
+
+                    return temBotaoAtivo;
                 });
+
+                const pendenciasCount = pendenciasReais.length;
 
                 if (pendenciasCount > 0) {
                     btn.disabled = true;
                     btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    statusEl.innerHTML = `🚨 PENDÊNCIA: ${pendenciasCount} jogo(s) aguardando decisão`;
+                    statusEl.innerHTML = `🚨 PENDÊNCIAS: ${pendenciasCount} jogo(s) aberto(s)`;
                     statusEl.className = "text-red-600 font-black text-xs uppercase animate-pulse";
                 } else {
                     btn.disabled = false;

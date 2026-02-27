@@ -334,7 +334,7 @@ class ReservaController extends Controller
 
     /**
      * Cria uma Reserva de Cliente confirmada, consumindo o slot fixo.
-     * Ajustado para evitar duplicidades e limpar pendências atropeladas.
+     * Método centralizado e robusto para evitar erros de SQL e validação.
      */
     public function createConfirmedReserva(array $validatedData, User $clientUser, ?int $fixedSlotId = null): Reserva
     {
@@ -346,24 +346,22 @@ class ReservaController extends Controller
         }
 
         // 🛡️ ADICIONADO: Validação Crítica de Caixa por Arena
+        // Isso impede que o bloqueio de uma arena (Futebol) afete outra (Vôlei)
         $financeiroController = app(\App\Http\Controllers\FinanceiroController::class);
         if ($financeiroController->isCashClosed($validatedData['date'], $arenaId)) {
             throw new \Exception("Bloqueio de Segurança: O caixa desta arena para o dia " . date('d/m/Y', strtotime($validatedData['date'])) . " já está encerrado. Reabra-o para agendar.");
         }
 
-        // 2. Checagem de Conflito (Rigorosa)
-        // Mudamos o 5º parâmetro para FALSE para detectar inclusive reservas PENDENTES
+        // 2. Checagem de Conflito (Ajustado para o novo formato multiquadras)
         if ($this->checkOverlap(
             $validatedData['date'],
             $validatedData['start_time'],
             $validatedData['end_time'],
             $arenaId,
-            false,
+            true,
             null
         )) {
-            // Nota: Se quiser permitir que o Admin atropele pendentes, remova este throw
-            // e deixe apenas a lógica de rejeição automática abaixo.
-            throw new \Exception('O horário selecionado já possui um agendamento (Confirmado ou Pendente) nesta quadra.');
+            throw new \Exception('O horário selecionado já está ocupado por outra reserva confirmada nesta quadra.');
         }
 
         // 3. Normalização dos horários para o formato H:i:s
@@ -386,6 +384,7 @@ class ReservaController extends Controller
         }
 
         $totalPaid = $signalValue;
+
         $paymentStatus = 'pending';
         $newReservaStatus = Reserva::STATUS_CONFIRMADA;
 
@@ -430,20 +429,9 @@ class ReservaController extends Controller
             'manager_id'       => \Illuminate\Support\Facades\Auth::id(),
         ]);
 
-        // 7. Limpeza de Pendências Atropeladas (Garante que não haverá duplicidade visual)
-        Reserva::where('date', $newReserva->date)
-            ->where('arena_id', $newReserva->arena_id)
-            ->where('start_time', $newReserva->start_time)
-            ->where('id', '!=', $newReserva->id)
-            ->where('status', Reserva::STATUS_PENDENTE)
-            ->update([
-                'status' => Reserva::STATUS_REJEITADA,
-                'cancellation_reason' => 'Horário ocupado por agendamento direto da administração.',
-                'manager_id' => \Illuminate\Support\Facades\Auth::id()
-            ]);
-
-        // 8. Registro da Transação Financeira do Sinal
+        // 7. Registro da Transação Financeira do Sinal
         if ($signalValue > 0) {
+            // Criamos a transação passando explicitamente o arena_id
             \App\Models\FinancialTransaction::create([
                 'reserva_id'     => $newReserva->id,
                 'arena_id'       => $arenaId,
@@ -577,7 +565,7 @@ class ReservaController extends Controller
      */
     public function cancelSeries(int $masterId, string $reason, bool $shouldRefund, float $amountPaidRef)
     {
-        $today = \Carbon\Carbon::today();
+        $today = \Carbon\Carbon::today()->toDateString();
         $managerId = \Illuminate\Support\Facades\Auth::id();
         $cancelledCount = 0;
         $messageFinance = "";
@@ -588,7 +576,7 @@ class ReservaController extends Controller
                 ->orWhere('id', $masterId);
         })
             ->where('is_fixed', false)
-            ->whereDate('date', '>=', $today->toDateString())
+            ->whereDate('date', '>=', $today)
             ->get();
 
         // 2. Localiza a reserva mestre para referência de Arena/Usuário
@@ -601,6 +589,7 @@ class ReservaController extends Controller
         // --- 💰 PASSO FINANCEIRO ANTECIPADO (BLINDAGEM TOTAL) ---
         if ($amountPaidRef > 0) {
             // Verificamos se JÁ EXISTE um estorno para este MasterId no dia de hoje
+            // Isso impede o estorno duplicado caso o cancelamento individual tenha ocorrido segundos antes
             $jaEstornado = \App\Models\FinancialTransaction::where('reserva_id', $masterId)
                 ->where('type', \App\Models\FinancialTransaction::TYPE_REFUND)
                 ->whereDate('paid_at', \Carbon\Carbon::today())
@@ -620,6 +609,7 @@ class ReservaController extends Controller
                 ]);
                 $messageFinance = " O valor de R$ " . number_format($amountPaidRef, 2, ',', '.') . " foi estornado do caixa.";
             } elseif (!$shouldRefund && !$jaEstornado) {
+                // Se não for estornar, apenas registra a retenção se já não houver transação
                 \App\Models\FinancialTransaction::create([
                     'reserva_id'     => $masterId,
                     'arena_id'       => $anchorReserva->arena_id,
@@ -645,15 +635,10 @@ class ReservaController extends Controller
                 continue;
             }
 
-            // 🛡️ CORREÇÃO CRÍTICA: Extração limpa da hora para evitar "Double Date"
-            // Convertemos para string garantindo que pegamos apenas H:i:s
-            $horaLimpa = $slot->start_time instanceof \Carbon\Carbon ? $slot->start_time->format('H:i:s') : date('H:i:s', strtotime($slot->start_time));
-            $dataLimpa = $slot->date instanceof \Carbon\Carbon ? $slot->date->format('Y-m-d') : $slot->date;
+            $slotStartDateTime = \Carbon\Carbon::parse($slot->date->format('Y-m-d') . ' ' . $slot->start_time);
 
-            $slotStartDateTime = \Carbon\Carbon::parse($dataLimpa . ' ' . $horaLimpa);
-
-            // Não cancela jogos que já passaram hoje ou no passado
-            if ($slotStartDateTime->isPast()) {
+            // Não cancela jogos que já passaram hoje
+            if ($slotStartDateTime->isPast() && $slot->date->isToday()) {
                 continue;
             }
 
@@ -668,6 +653,7 @@ class ReservaController extends Controller
             $this->recreateFixedSlot($slot);
 
             // 3. Limpa transações de sinal/pagamento individuais para não poluir o histórico
+            // (O estorno/retenção mestre feito acima é o que vale para o caixa)
             \App\Models\FinancialTransaction::where('reserva_id', $slot->id)
                 ->whereIn('type', [
                     \App\Models\FinancialTransaction::TYPE_SIGNAL,

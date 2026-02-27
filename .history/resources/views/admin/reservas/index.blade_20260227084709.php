@@ -110,7 +110,7 @@
                                                 </div>
                                             @endif
 
-                                            {{-- 4. Checagem de Conflitos (Lógica Original Completa) --}}
+                                            {{-- 4. Checagem de Conflitos (Sua lógica original) --}}
                                             @php
                                                 $sameTimeReservasCount = \App\Models\Reserva::where(
                                                     'id',
@@ -153,7 +153,6 @@
                                                     $cashIsClosed = \App\Http\Controllers\FinanceiroController::isCashClosed(
                                                         $reserva->date->toDateString(),
                                                     );
-                                                    $isColaborador = auth()->user()->role === 'colaborador';
                                                 @endphp
 
                                                 @if ($cashIsClosed)
@@ -170,16 +169,16 @@
                                                         Bloqueado
                                                     </button>
                                                 @else
-                                                    {{-- BOTÃO ATIVO: Confirmar --}}
+                                                    {{-- BOTÃO ATIVO: Passando arena_id e start_time para o JS --}}
                                                     <button type="button"
                                                         onclick="openConfirmModal(
-                                                            '{{ $reserva->id }}',
-                                                            '{{ $reserva->client_name }}',
-                                                            '{{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }} às {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}',
-                                                            '{{ $reserva->price }}',
-                                                            '{{ $reserva->arena_id }}',
-                                                            '{{ $reserva->start_time }}'
-                                                        )"
+                    '{{ $reserva->id }}',
+                    '{{ $reserva->client_name }}',
+                    '{{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }} às {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}',
+                    '{{ $reserva->price }}',
+                    '{{ $reserva->arena_id }}',
+                    '{{ $reserva->start_time }}'
+                )"
                                                         class="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center justify-center shadow">
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1"
                                                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,19 +189,14 @@
                                                     </button>
                                                 @endif
 
-                                                {{-- 🛡️ BOTÃO REJEITAR (PROTEGIDO) --}}
-                                                <form id="rejeitar-form-{{ $reserva->id }}" action="{{ route('admin.reservas.rejeitar', $reserva->id) }}"
+                                                {{-- Botão Rejeitar --}}
+                                                <form action="{{ route('admin.reservas.rejeitar', $reserva->id) }}"
                                                     method="POST" class="w-full">
                                                     @csrf @method('PATCH')
                                                     <input type="hidden" name="rejection_reason"
                                                         value="Rejeitada pela administração - Horário indisponível ou selecionado outro cliente.">
-
-                                                    <button type="button"
-                                                        @if($isColaborador)
-                                                            onclick="window.requisitarAutorizacao(token => { if(token) document.getElementById('rejeitar-form-{{ $reserva->id }}').submit(); })"
-                                                        @else
-                                                            onclick="if(confirm('Rejeitar esta solicitação?')) this.form.submit()"
-                                                        @endif
+                                                    <button type="submit"
+                                                        onclick="return confirm('Rejeitar esta solicitação?')"
                                                         class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition shadow">
                                                         Rejeitar
                                                     </button>
