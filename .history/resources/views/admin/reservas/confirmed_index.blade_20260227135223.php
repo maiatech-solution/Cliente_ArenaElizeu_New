@@ -193,7 +193,7 @@
 
                                     $caixaFechado = \App\Http\Controllers\FinanceiroController::isCashClosed(
                                         $dataReserva,
-                                        $reserva->arena_id,
+                                        $reserva->arena_id, // <--- Adicione este parâmetro
                                     );
 
                                     // --- LÓGICA DE AUDITORIA FINANCEIRA ---

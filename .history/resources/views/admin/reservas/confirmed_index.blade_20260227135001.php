@@ -192,9 +192,9 @@
                                     $ePassado = \Carbon\Carbon::parse($reserva->date)->isBefore($dataHoje);
 
                                     $caixaFechado = \App\Http\Controllers\FinanceiroController::isCashClosed(
-                                        $dataReserva,
-                                        $reserva->arena_id,
-                                    );
+        $dataReserva, 
+        $reserva->arena_id // <--- Adicione este parâmetro
+    );
 
                                     // --- LÓGICA DE AUDITORIA FINANCEIRA ---
                                     $valorTotal = (float) $reserva->price;
