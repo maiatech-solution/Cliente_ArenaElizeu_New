@@ -82,18 +82,18 @@ class PaymentController extends Controller
         // 1. GLOBAL: Transações de todas as arenas (Para os cards laterais não zerarem)
         $allTransactionsOfDay = FinancialTransaction::whereDate('paid_at', $dateObject)->get();
 
-        // 2. FILTRADO: Transações da arena selecionada
+        // 2. FILTRADO: Transações da arena selecionada (Para a listagem e saldo do card principal)
         $financialTransactions = FinancialTransaction::whereDate('paid_at', $dateObject)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->with(['reserva', 'manager', 'payer', 'arena'])
             ->orderBy('paid_at', 'desc')
             ->get();
 
-        // 3. IDs de reservas com movimentação hoje
+        // 3. SEGUNDO: Pegamos os IDs de reservas que movimentaram dinheiro hoje
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
 
-        // 4. Consulta de Reservas
-        $query = Reserva::with(['user', 'arena', 'transactions']);
+        // 4. TERCEIRO: Consulta de Reservas 🎯
+        $query = Reserva::with(['user', 'arena']);
 
         if ($filterDebts) {
             $query->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial']);
@@ -106,6 +106,7 @@ class PaymentController extends Controller
             });
         }
 
+        // Filtros de busca e arena
         if ($selectedArenaId) $query->where('arena_id', $selectedArenaId);
         if ($searchTerm) {
             $query->where(function ($q) use ($searchTerm) {
@@ -119,17 +120,7 @@ class PaymentController extends Controller
             ->orderBy($filterDebts ? 'date' : 'start_time', 'asc')
             ->get();
 
-        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (AUTO-CORREÇÃO)
-        // Isso garante que o 'total_paid' na tabela 'reservas' reflita a soma real do extrato (Líquido)
-        foreach ($reservas as $reserva) {
-            $realPaid = (float) $reserva->transactions->sum('amount');
-            if (round((float)$reserva->total_paid, 2) !== round($realPaid, 2)) {
-                $reserva->total_paid = $realPaid;
-                \DB::table('reservas')->where('id', $reserva->id)->update(['total_paid' => $realPaid]);
-            }
-        }
-
-        // 5. Saldo Líquido Real do Dia
+        // 5. Saldo Líquido Real (Desta arena ou Geral se não houver filtro)
         $totalRecebidoDiaLiquido = $financialTransactions->sum('amount');
 
         // 6. Lógica de Status do Caixa e Histórico
@@ -150,11 +141,11 @@ class PaymentController extends Controller
             return (object)[
                 'id'    => $arena->id,
                 'name'  => $arena->name,
-                'total' => (float) $allTransactionsOfDay->where('arena_id', $arena->id)->sum('amount')
+                'total' => $allTransactionsOfDay->where('arena_id', $arena->id)->sum('amount')
             ];
         });
 
-        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta logs de falta
+        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta os logs de falta no financeiro do dia
         $noShowCount = $allTransactionsOfDay
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->filter(function ($t) {
@@ -170,15 +161,13 @@ class PaymentController extends Controller
             'faturamentoPorArena'     => $faturamentoPorArena,
             'cashierStatus'           => $cashierStatus,
             'cashierHistory'          => $cashierHistory,
+
+            // 🟢 MUDANÇA AQUI: Conta tudo que está na lista da tela, sem filtrar data de novo
             'totalReservasDia'        => $reservas->count(),
-            // 🎯 Cálculo Preciso do que falta receber (Confirmados/Pendentes)
-            'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])
-                ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
+
+            'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
             'noShowCount'             => $noShowCount,
-            // 🎯 Cálculo Preciso da Dívida Autorizada (Completed)
-            'totalAuthorizedDebt'     => $reservas->where('status', 'completed')
-                ->whereIn('payment_status', ['unpaid', 'partial'])
-                ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
+            'totalAuthorizedDebt'     => $reservas->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
         ]);
     }
 
@@ -331,7 +320,6 @@ class PaymentController extends Controller
 
     /**
      * Processa o Pagamento (Blindado contra duplicidade e erro de saldo)
-     * Corrigido para somar o histórico real e evitar duplicidade de valores.
      */
     public function processPayment(Request $request, $reservaId)
     {
@@ -339,7 +327,6 @@ class PaymentController extends Controller
         $dataOperacional = $request->input('payment_date') ?? now()->toDateString();
         $labelData = \Carbon\Carbon::parse($dataOperacional)->format('d/m/Y');
 
-        // 🛡️ TRAVA DE CAIXA: Impede lançamentos se o caixa da arena já estiver fechado
         if (\App\Http\Controllers\FinanceiroController::isCashClosed($dataOperacional, $reserva->arena_id)) {
             return response()->json([
                 'success' => false,
@@ -365,35 +352,23 @@ class PaymentController extends Controller
                 $finalPrice = round((float) $validated['final_price'], 2);
                 $amountReceivedNow = round((float) $validated['amount_paid'], 2);
 
-                // 🛡️ CORREÇÃO 1: TRAVA ANTI-CLIQUE DUPLO (5 segundos)
-                $pagamentoDuplicado = $reservaFresh->transactions()
-                    ->where('amount', $amountReceivedNow)
-                    ->where('created_at', '>=', now()->subSeconds(5))
-                    ->exists();
-
-                if ($pagamentoDuplicado) {
-                    throw new \Exception('DUPLICATE_PAYMENT');
-                }
-
-                // 🛡️ CORREÇÃO 2: SOMA GLOBAL LÍQUIDA (AQUI ESTAVA O ERRO)
-                // Somamos TODOS os registros da reserva (pagamentos e estornos) indiferente da data.
-                // Isso garante que (+50 pix) e (-50 estorno) resultem em 0 de saldo pago.
+                // --- 🛡️ CORREÇÃO DA SOMA ---
+                // Recalculamos o total pago real baseado na SOMA das transações existentes no banco
+                // Isso evita herdar valores "fantasmas" que ficaram no campo total_paid após estornos mal sucedidos
                 $jaPagoReal = (float) $reservaFresh->transactions()->sum('amount');
-
                 $newTotalPaid = round($jaPagoReal + $amountReceivedNow, 2);
 
-                // ✅ Verificação de duplicidade lógica
+                // ✅ Verificação de duplicidade baseada no saldo, não apenas no status
                 if ($jaPagoReal >= $finalPrice && $finalPrice > 0 && $amountReceivedNow > 0) {
                     throw new \Exception('ALREADY_PAID');
                 }
 
-                // Segurança contra pagar mais que o total (tolerância de 5 centavos)
-                if ($newTotalPaid > ($finalPrice + 0.05)) {
-                    $saldoRestante = round($finalPrice - $jaPagoReal, 2);
-                    throw new \Exception("Valor excede o total. O saldo devedor real era: R$ " . number_format($saldoRestante, 2, ',', '.'));
+                // Segurança contra pagar mais que o total
+                if ($newTotalPaid > ($finalPrice + 0.05)) { // margem de 5 centavos para dízimas
+                    throw new \Exception("Valor excede o total. Saldo devedor era: R$ " . number_format($finalPrice - $jaPagoReal, 2, ',', '.'));
                 }
 
-                // Define status financeiro e visual da reserva
+                // Define status financeiro
                 if ($newTotalPaid >= $finalPrice && $finalPrice > 0) {
                     $paymentStatus = 'paid';
                     $newVisualStatus = 'completed';
@@ -405,7 +380,6 @@ class PaymentController extends Controller
                     $newVisualStatus = $reservaFresh->status;
                 }
 
-                // Atualiza a reserva com os valores totais
                 $reservaFresh->update([
                     'total_paid'     => $newTotalPaid,
                     'final_price'    => $finalPrice,
@@ -414,18 +388,15 @@ class PaymentController extends Controller
                     'manager_id'     => Auth::id(),
                 ]);
 
-                // Atualiza série futura para mensalistas
+                // Atualiza série futura
                 if (!empty($validated['apply_to_series']) && $reservaFresh->recurrent_series_id) {
                     Reserva::where('recurrent_series_id', $reservaFresh->recurrent_series_id)
                         ->where('date', '>', $reservaFresh->date)
                         ->where('payment_status', 'unpaid')
-                        ->update([
-                            'price' => $finalPrice,
-                            'final_price' => $finalPrice
-                        ]);
+                        ->update(['price' => $finalPrice, 'final_price' => $finalPrice]);
                 }
 
-                // --- REGISTRO DA TRANSAÇÃO FINANCEIRA ---
+                // --- REGISTRO DA TRANSAÇÃO ---
                 if ($amountReceivedNow > 0) {
                     FinancialTransaction::create([
                         'reserva_id'     => $reservaFresh->id,
@@ -443,34 +414,17 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Pagamento de R$ " . number_format($validated['amount_paid'], 2, ',', '.') . " processado com sucesso!",
+                'message' => "Pagamento de R$ " . number_format($validated['amount_paid'], 2, ',', '.') . " processado!",
                 'status'  => $paymentStatus
             ]);
         } catch (\Exception $e) {
-            if ($e->getMessage() === 'DUPLICATE_PAYMENT') {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Este pagamento já foi processado (clique duplo evitado).',
-                    'status'  => $paymentStatus
-                ]);
-            }
-
             if ($e->getMessage() === 'ALREADY_PAID') {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Esta reserva já foi quitada anteriormente.',
-                    'status' => 'paid'
-                ]);
+                return response()->json(['success' => true, 'message' => 'Esta reserva já foi baixada.', 'status' => 'paid']);
             }
-
-            \Log::error("Erro no processamento de pagamento ID #{$reservaId}: " . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 422);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
+
 
     /**
      * Registra Falta (No-Show) - Blindado com auditoria e preservação de histórico

@@ -1755,30 +1755,18 @@
                 document.getElementById('modalReservaId').value = id;
                 document.getElementById('modalClientName').innerText = clientName;
 
-                // 🎯 AJUSTE DE LÓGICA: Se o 'remaining' (restante) for igual ao total,
-                // garantimos que o signalAmount (já pago) seja zerado para o cálculo do controlador.
-                let valorParaSugerir = remaining;
-                let sinalReal = signalAmount;
-
-                // Se o saldo a pagar na tela é o valor total do jogo (R$ 100),
-                // ignoramos pagamentos anteriores que podem ser estornos mal interpretados.
-                if (Math.abs(remaining - totalPrice) < 0.01) {
-                    sinalReal = 0;
-                    valorParaSugerir = totalPrice;
-                }
-
-                // 3. Formatação visual do sinal já pago
+                // 3. Formatação visual do sinal já pago (Saldo que o cliente já tem na reserva)
                 document.getElementById('modalSignalAmount').innerText =
-                    sinalReal.toLocaleString('pt-BR', {
+                    signalAmount.toLocaleString('pt-BR', {
                         style: 'currency',
                         currency: 'BRL'
                     });
 
                 // 4. Valores brutos para cálculos internos do Modal
-                document.getElementById('modalSignalAmountRaw').value = sinalReal.toFixed(2);
+                document.getElementById('modalSignalAmountRaw').value = signalAmount.toFixed(2);
                 document.getElementById('modalFinalPrice').value = totalPrice.toFixed(2);
 
-                // 5. Captura da data operacional
+                // 5. Captura da data operacional correta (garante que o pagamento caia no dia certo do caixa)
                 const inputDataFiltro = document.querySelector('input[name="date"]');
                 const dataDoCaixa = inputDataFiltro ?
                     inputDataFiltro.value :
@@ -1786,27 +1774,33 @@
 
                 if (dataDoCaixa) {
                     document.getElementById('modalPaymentDate').value = dataDoCaixa;
+                    console.log("📅 Modal aberto para a data operacional:", dataDoCaixa);
+                } else {
+                    console.error("❌ Erro: Não foi possível capturar a data operacional.");
                 }
 
-                // 6. Controle da opção de aplicar a série (mensalistas)
+                // 6. Controle da opção de aplicar a série (exclusivo para mensalistas)
                 const recurrentOption = document.getElementById('recurrentOption');
                 if (recurrentOption) {
-                    isRecurrent ? recurrentOption.classList.remove('hidden') : recurrentOption.classList.add('hidden');
+                    if (isRecurrent) {
+                        recurrentOption.classList.remove('hidden');
+                    } else {
+                        recurrentOption.classList.add('hidden');
+                    }
                 }
 
-                // 7. Sugere o valor correto para pagamento
+                // 7. Melhoria Crítica: Sugere o valor restante e reseta o estado do botão
                 const amountPaidInput = document.getElementById('modalAmountPaid');
                 if (amountPaidInput) {
-                    amountPaidInput.value = valorParaSugerir.toFixed(2);
+                    // Preenche automaticamente com o que falta para facilitar a operação
+                    amountPaidInput.value = remaining.toFixed(2);
                 }
 
-                // Reset do botão de envio
+                // Reset do botão de envio (evita que fique travado em "Processando..." de cliques anteriores)
                 const submitBtn = document.querySelector('#paymentForm button[type="submit"]');
                 if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = 'CONCLUIR PAGAMENTO';
-                    // Reset da trava global específica deste formulário para garantir que abra limpo
-                    if (window.caixaProcessandoGlobal) window.caixaProcessandoGlobal['paymentForm'] = false;
                 }
 
                 // 8. Recalcula os campos de saldo devedor no modal
@@ -2102,7 +2096,6 @@
                 const form = document.getElementById(formId);
                 if (!form) return;
 
-                // Impede múltiplas vinculações do mesmo evento (Idempotência no Front)
                 if (form.dataset.ajaxBound === "1") return;
                 form.dataset.ajaxBound = "1";
 
@@ -2111,22 +2104,16 @@
                 form.onsubmit = function(e) {
                     e.preventDefault();
 
-                    // 🛡️ TRAVA 1: Impede até o início da lógica se já houver um envio em curso
-                    if (window.caixaProcessandoGlobal[formId]) {
-                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo no Front-end para:", formId);
-                        return false;
-                    }
+                    // 🛑 TRAVA 1: Bloqueio físico imediato no envio
+                    if (window.caixaProcessandoGlobal[formId]) return false;
                     window.caixaProcessandoGlobal[formId] = true;
 
                     const enviarParaOServidor = (tokenRecebido = null) => {
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
 
-                        console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
-
                         if (btn) {
                             btn.disabled = true;
-                            btn.dataset.originalText = btn.innerText;
                             btn.innerText = "AGUARDE...";
                         }
                         if (spinner) spinner.classList.remove('hidden');
@@ -2149,17 +2136,22 @@
                             })
                             .then(res => res.json())
                             .then(json => {
-                                console.log("📥 [DEBUG] Resposta do Servidor:", json);
-
-                                // 🛡️ TRAVA 2: Silenciar alertas se a página já estiver finalizando ou for erro de duplicidade
+                                // --- 🛡️ FILTRO DE ALERTA AGRESSIVO ---
                                 const originalAlert = window.alert;
+
+                                // Sobrescrevemos o alert APENAS para esta resposta
                                 window.alert = function(msg) {
                                     const m = msg.toLowerCase();
-                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade") || m
-                                        .includes("anteriormente")) {
-                                        console.log("🔕 [SILENCIADOR] Alerta duplicado ignorado.");
-                                        return;
+
+                                    // Se já exibimos um sucesso ou é uma mensagem de duplicidade, CANCELA o alert
+                                    if (form.dataset.finalizado === "true" ||
+                                        m.includes("baixada anteriormente") ||
+                                        m.includes("ja foi fechado") ||
+                                        m.includes("duplicidade")) {
+                                        console.log("Mensagem duplicada bloqueada com sucesso.");
+                                        return; // O alert morre aqui, não aparece na tela
                                     }
+
                                     if (json.success) form.dataset.finalizado = "true";
                                     originalAlert(msg);
                                 };
@@ -2168,51 +2160,42 @@
                                     alert(json.message);
                                     window.location.reload();
                                 } else {
-                                    // Se o erro for DUPLICIDADE, tratamos como sucesso (pois o registro já existe)
-                                    if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
-                                        console.log("✅ [AUTO-RESOLVE] Registro já processado pelo servidor.");
-                                        window.location.reload();
-                                        return;
-                                    }
-
                                     alert(json.message || 'Erro ao processar.');
 
-                                    // 🔓 LIBERAÇÃO: Só destrava se NÃO for sucesso, permitindo corrigir erro de digitação
-                                    window.caixaProcessandoGlobal[formId] = false;
-                                    if (btn) {
-                                        btn.disabled = false;
-                                        btn.innerText = btn.dataset.originalText || "CONCLUIR";
+                                    // Só libera se não for sucesso, para permitir correção
+                                    if (form.dataset.finalizado !== "true") {
+                                        window.caixaProcessandoGlobal[formId] = false;
+                                        if (btn) {
+                                            btn.disabled = false;
+                                            btn.innerText = "CONCLUIR";
+                                        }
+                                        if (spinner) spinner.classList.add('hidden');
                                     }
-                                    if (spinner) spinner.classList.add('hidden');
                                 }
+
+                                // Devolve o alert original ao sistema após 1.5s
+                                setTimeout(() => {
+                                    window.alert = originalAlert;
+                                }, 1500);
                             })
                             .catch(err => {
-                                console.error("🔥 [DEBUG FATAL]:", err);
+                                console.error(err);
                                 window.caixaProcessandoGlobal[formId] = false;
-                                if (btn) {
-                                    btn.disabled = false;
-                                    btn.innerText = "TENTAR NOVAMENTE";
-                                }
+                                if (btn) btn.disabled = false;
                             });
                     };
 
-                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm', 'closeCashForm',
-                        'paymentForm'
+                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm',
+                        'closeCashForm'
                     ];
-
                     if (acoesCriticas.includes(formId) && userRole === 'colaborador') {
                         window.requisitarAutorizacao(token => {
-                            if (token) {
-                                enviarParaOServidor(token);
-                            } else {
-                                // Se cancelou a senha, destrava o formId para permitir tentar de novo
-                                window.caixaProcessandoGlobal[formId] = false;
-                            }
+                            if (token) enviarParaOServidor(token);
+                            else window.caixaProcessandoGlobal[formId] = false;
                         });
                     } else {
                         enviarParaOServidor();
                     }
-
                     return false;
                 };
             }

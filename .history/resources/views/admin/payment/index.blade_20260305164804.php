@@ -2102,7 +2102,7 @@
                 const form = document.getElementById(formId);
                 if (!form) return;
 
-                // Impede múltiplas vinculações do mesmo evento (Idempotência no Front)
+                // Impede múltiplas vinculações do mesmo evento
                 if (form.dataset.ajaxBound === "1") return;
                 form.dataset.ajaxBound = "1";
 
@@ -2111,28 +2111,30 @@
                 form.onsubmit = function(e) {
                     e.preventDefault();
 
-                    // 🛡️ TRAVA 1: Impede até o início da lógica se já houver um envio em curso
-                    if (window.caixaProcessandoGlobal[formId]) {
-                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo no Front-end para:", formId);
-                        return false;
-                    }
+                    // 🛡️ TRAVA DE SEGURANÇA: Impede disparar o fetch se já estiver processando
+                    if (window.caixaProcessandoGlobal[formId]) return false;
                     window.caixaProcessandoGlobal[formId] = true;
 
                     const enviarParaOServidor = (tokenRecebido = null) => {
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
 
+                        // DEBUG 1: Início do envio
                         console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
 
                         if (btn) {
                             btn.disabled = true;
-                            btn.dataset.originalText = btn.innerText;
                             btn.innerText = "AGUARDE...";
                         }
-                        if (spinner) spinner.classList.remove('hidden');
 
                         const formData = new FormData(form);
                         if (tokenRecebido) formData.append('supervisor_token', tokenRecebido);
+
+                        // DEBUG 2: Conferindo o que está sendo enviado
+                        console.log("📦 [DEBUG] Dados enviados:");
+                        for (let pair of formData.entries()) {
+                            console.log(`   -> ${pair[0]}: ${pair[1]}`);
+                        }
 
                         const reservaId = formData.get('reserva_id') || document.getElementById('noShowReservaId')
                             ?.value;
@@ -2147,19 +2149,20 @@
                                     'Accept': 'application/json'
                                 }
                             })
-                            .then(res => res.json())
+                            .then(res => {
+                                // DEBUG 3: Status da resposta HTTP
+                                console.log("📡 [DEBUG] Status HTTP:", res.status);
+                                return res.json();
+                            })
                             .then(json => {
+                                // DEBUG 4: Resposta exata do servidor
                                 console.log("📥 [DEBUG] Resposta do Servidor:", json);
 
-                                // 🛡️ TRAVA 2: Silenciar alertas se a página já estiver finalizando ou for erro de duplicidade
                                 const originalAlert = window.alert;
                                 window.alert = function(msg) {
                                     const m = msg.toLowerCase();
-                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade") || m
-                                        .includes("anteriormente")) {
-                                        console.log("🔕 [SILENCIADOR] Alerta duplicado ignorado.");
+                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade"))
                                         return;
-                                    }
                                     if (json.success) form.dataset.finalizado = "true";
                                     originalAlert(msg);
                                 };
@@ -2168,51 +2171,33 @@
                                     alert(json.message);
                                     window.location.reload();
                                 } else {
-                                    // Se o erro for DUPLICIDADE, tratamos como sucesso (pois o registro já existe)
-                                    if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
-                                        console.log("✅ [AUTO-RESOLVE] Registro já processado pelo servidor.");
-                                        window.location.reload();
-                                        return;
-                                    }
-
                                     alert(json.message || 'Erro ao processar.');
-
-                                    // 🔓 LIBERAÇÃO: Só destrava se NÃO for sucesso, permitindo corrigir erro de digitação
                                     window.caixaProcessandoGlobal[formId] = false;
                                     if (btn) {
                                         btn.disabled = false;
-                                        btn.innerText = btn.dataset.originalText || "CONCLUIR";
+                                        btn.innerText = "CONCLUIR";
                                     }
-                                    if (spinner) spinner.classList.add('hidden');
                                 }
                             })
                             .catch(err => {
                                 console.error("🔥 [DEBUG FATAL]:", err);
                                 window.caixaProcessandoGlobal[formId] = false;
-                                if (btn) {
-                                    btn.disabled = false;
-                                    btn.innerText = "TENTAR NOVAMENTE";
-                                }
+                                if (btn) btn.disabled = false;
                             });
                     };
 
-                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm', 'closeCashForm',
-                        'paymentForm'
+                    // Lógica de autorização para colaboradores
+                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm',
+                        'closeCashForm'
                     ];
-
                     if (acoesCriticas.includes(formId) && userRole === 'colaborador') {
                         window.requisitarAutorizacao(token => {
-                            if (token) {
-                                enviarParaOServidor(token);
-                            } else {
-                                // Se cancelou a senha, destrava o formId para permitir tentar de novo
-                                window.caixaProcessandoGlobal[formId] = false;
-                            }
+                            if (token) enviarParaOServidor(token);
+                            else window.caixaProcessandoGlobal[formId] = false; // Destrava se cancelar a senha
                         });
                     } else {
                         enviarParaOServidor();
                     }
-
                     return false;
                 };
             }

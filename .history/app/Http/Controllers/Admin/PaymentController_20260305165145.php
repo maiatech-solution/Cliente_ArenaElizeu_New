@@ -82,18 +82,18 @@ class PaymentController extends Controller
         // 1. GLOBAL: Transações de todas as arenas (Para os cards laterais não zerarem)
         $allTransactionsOfDay = FinancialTransaction::whereDate('paid_at', $dateObject)->get();
 
-        // 2. FILTRADO: Transações da arena selecionada
+        // 2. FILTRADO: Transações da arena selecionada (Para a listagem e saldo do card principal)
         $financialTransactions = FinancialTransaction::whereDate('paid_at', $dateObject)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->with(['reserva', 'manager', 'payer', 'arena'])
             ->orderBy('paid_at', 'desc')
             ->get();
 
-        // 3. IDs de reservas com movimentação hoje
+        // 3. SEGUNDO: Pegamos os IDs de reservas que movimentaram dinheiro hoje
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
 
-        // 4. Consulta de Reservas
-        $query = Reserva::with(['user', 'arena', 'transactions']);
+        // 4. TERCEIRO: Consulta de Reservas 🎯
+        $query = Reserva::with(['user', 'arena', 'transactions']); // Adicionado eager loading de transactions
 
         if ($filterDebts) {
             $query->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial']);
@@ -106,6 +106,7 @@ class PaymentController extends Controller
             });
         }
 
+        // Filtros de busca e arena
         if ($selectedArenaId) $query->where('arena_id', $selectedArenaId);
         if ($searchTerm) {
             $query->where(function ($q) use ($searchTerm) {
@@ -120,16 +121,17 @@ class PaymentController extends Controller
             ->get();
 
         // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (AUTO-CORREÇÃO)
-        // Isso garante que o 'total_paid' na tabela 'reservas' reflita a soma real do extrato (Líquido)
+        // Percorre as reservas carregadas e garante que o total_paid seja a soma real do extrato
         foreach ($reservas as $reserva) {
             $realPaid = (float) $reserva->transactions->sum('amount');
             if (round((float)$reserva->total_paid, 2) !== round($realPaid, 2)) {
                 $reserva->total_paid = $realPaid;
+                // Atualizamos no banco silenciosamente para não disparar observers desnecessários
                 \DB::table('reservas')->where('id', $reserva->id)->update(['total_paid' => $realPaid]);
             }
         }
 
-        // 5. Saldo Líquido Real do Dia
+        // 5. Saldo Líquido Real (Desta arena ou Geral se não houver filtro)
         $totalRecebidoDiaLiquido = $financialTransactions->sum('amount');
 
         // 6. Lógica de Status do Caixa e Histórico
@@ -150,11 +152,11 @@ class PaymentController extends Controller
             return (object)[
                 'id'    => $arena->id,
                 'name'  => $arena->name,
-                'total' => (float) $allTransactionsOfDay->where('arena_id', $arena->id)->sum('amount')
+                'total' => $allTransactionsOfDay->where('arena_id', $arena->id)->sum('amount')
             ];
         });
 
-        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta logs de falta
+        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta os logs de falta no financeiro do dia
         $noShowCount = $allTransactionsOfDay
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->filter(function ($t) {
@@ -171,14 +173,9 @@ class PaymentController extends Controller
             'cashierStatus'           => $cashierStatus,
             'cashierHistory'          => $cashierHistory,
             'totalReservasDia'        => $reservas->count(),
-            // 🎯 Cálculo Preciso do que falta receber (Confirmados/Pendentes)
-            'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])
-                ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
+            'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
             'noShowCount'             => $noShowCount,
-            // 🎯 Cálculo Preciso da Dívida Autorizada (Completed)
-            'totalAuthorizedDebt'     => $reservas->where('status', 'completed')
-                ->whereIn('payment_status', ['unpaid', 'partial'])
-                ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
+            'totalAuthorizedDebt'     => $reservas->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial'])->sum(fn($r) => max(0, ($r->final_price ?? $r->price) - $r->total_paid)),
         ]);
     }
 

@@ -501,14 +501,10 @@
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 @forelse ($reservas as $reserva)
                                     @php
-                                        // 1. Preço que deve ser pago nesta ocorrência
-                                        $valorDoHorario = (float) ($reserva->final_price ?? $reserva->price);
+                                        // 1. Definição do Preço Final
+                                        $total = $reserva->final_price ?? $reserva->price;
 
-                                        // 2. SALDO REAL (Global): Soma de todas as transações (Pagamentos - Estornos)
-                                        // Se pagou 50 e você estornou 50, o saldo é 0.
-                                        $saldoRealReserva = (float) $reserva->transactions()->sum('amount');
-
-                                        // 3. DINHEIRO HOJE: O que entrou fisicamente no caixa na data selecionada
+                                        // 2. Quanto entrou no caixa especificamente NESTA DATA (Ajustado para paid_at)
                                         $pagoNoDia = $financialTransactions
                                             ->where('reserva_id', $reserva->id)
                                             ->filter(function ($t) use ($selectedDate) {
@@ -517,30 +513,84 @@
                                             })
                                             ->sum('amount');
 
-                                        // 4. CÁLCULO DO RESTANTE: Baseado no Saldo Real histórico da reserva
-                                        $restanteNoDia = max(0, $valorDoHorario - $saldoRealReserva);
+                                        // 3. Total acumulado histórico (Sinais + Quitações)
+                                        $pagoGeral = (float) $reserva->total_paid;
 
-                                        // 5. Definição Visual do Status (Baseada em Matemática, não apenas no campo do banco)
+                                        // 4. Saldo Devedor Real
+                                        $restante = max(0, round($total - $pagoGeral, 2));
+                                        $currentStatus = $reserva->payment_status;
+
+                                        // 5. Lógica de Atraso
+                                        $dataHoje = \Carbon\Carbon::today()->toDateString();
+                                        $dataReserva = \Carbon\Carbon::parse($reserva->date)->toDateString();
+                                        $eHoje = $dataReserva === $dataHoje;
+                                        $isOverdue = false;
+
+                                        if (
+                                            in_array($reserva->status, ['confirmed', 'pending']) &&
+                                            $currentStatus !== 'paid'
+                                        ) {
+                                            $onlyTime = \Carbon\Carbon::parse($reserva->end_time)->format('H:i:s');
+                                            try {
+                                                $reservaEndTime = \Carbon\Carbon::parse($dataReserva . ' ' . $onlyTime);
+                                                if ($reservaEndTime->isPast()) {
+                                                    $isOverdue = true;
+                                                }
+                                            } catch (\Exception $e) {
+                                                $isOverdue = false;
+                                            }
+                                        }
+
+                                        // 6. Definição Visual do Status
                                         if ($reserva->status === 'no_show') {
                                             $statusClass = 'bg-red-500 text-white';
                                             $statusLabel = 'FALTA';
-                                        } elseif ($restanteNoDia <= 0.01) {
-                                            $statusClass = 'bg-green-100 text-green-800';
+                                        } elseif (in_array($reserva->status, ['canceled', 'rejected'])) {
+                                            $statusClass = 'bg-gray-400 text-white';
+                                            $statusLabel = 'CANCELADO';
+                                        } elseif ($currentStatus === 'paid') {
+                                            $statusClass =
+                                                'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
                                             $statusLabel = 'PAGO';
-                                        } elseif ($saldoRealReserva > 0) {
+                                        } elseif ($reserva->status === 'completed' && $currentStatus !== 'paid') {
+                                            $statusClass =
+                                                'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse';
+                                            $statusLabel = 'DÍVIDA ATIVA';
+                                        } elseif ($isOverdue) {
+                                            $statusClass = 'bg-red-700 text-white animate-pulse';
+                                            $statusLabel = 'ATRASADO';
+                                        } elseif ($currentStatus === 'partial') {
                                             $statusClass = 'bg-yellow-100 text-yellow-800';
                                             $statusLabel = 'PARCIAL';
                                         } else {
                                             $statusClass = 'bg-gray-100 text-gray-800';
-                                            $statusLabel = 'PENDENTE';
+                                            $statusLabel = $pagoGeral > 0 ? 'SINAL' : 'PENDENTE';
                                         }
+
+                                        $rowHighlight = $eHoje
+                                            ? 'bg-blue-50/40 dark:bg-blue-900/10 border-l-4 border-blue-500'
+                                            : 'hover:bg-gray-50 border-l-4 border-transparent';
+
+                                        $canPay =
+                                            $restante > 0.01 && !in_array($reserva->status, ['canceled', 'rejected']);
+                                        $canBeNoShow = !in_array($reserva->status, [
+                                            'no_show',
+                                            'canceled',
+                                            'rejected',
+                                            //'completed',
+                                        ]);
+                                        $canBeDebt =
+                                            $restante > 0 &&
+                                            $reserva->status !== 'completed' &&
+                                            !in_array($reserva->status, ['canceled', 'rejected', 'no_show']);
                                     @endphp
 
-                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition duration-150">
+                                    <tr class="{{ $rowHighlight }} transition duration-150">
                                         {{-- Horário --}}
                                         <td
                                             class="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-700 dark:text-gray-300">
-                                            {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}
+                                            {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }} -
+                                            {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}
                                         </td>
 
                                         {{-- Cliente --}}
@@ -549,6 +599,12 @@
                                                 {{ $reserva->client_name }}
                                                 <span
                                                     class="text-[10px] text-gray-400 font-normal">#{{ $reserva->id }}</span>
+                                            </div>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <span
+                                                    class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 font-black border border-indigo-100 uppercase">
+                                                    🏟️ {{ $reserva->arena->name ?? 'N/A' }}
+                                                </span>
                                             </div>
                                         </td>
 
@@ -561,44 +617,42 @@
                                         </td>
 
                                         {{-- Tipo --}}
-                                        <td
-                                            class="px-4 py-4 whitespace-nowrap text-xs font-semibold {{ $reserva->is_recurrent ? 'text-fuchsia-600' : 'text-blue-600' }}">
-                                            {{ $reserva->is_recurrent ? 'Recorrente' : 'Pontual' }}
+                                        <td class="px-4 py-4 whitespace-nowrap text-xs">
+                                            <span
+                                                class="font-semibold {{ $reserva->is_recurrent ? 'text-fuchsia-600' : 'text-blue-600' }}">
+                                                {{ $reserva->is_recurrent ? 'Recorrente' : 'Pontual' }}
+                                            </span>
                                         </td>
 
                                         {{-- Valor Total --}}
                                         <td
                                             class="px-4 py-4 text-right text-sm font-bold text-gray-900 dark:text-white">
-                                            R$ {{ number_format($valorDoHorario, 2, ',', '.') }}
+                                            R$ {{ number_format($total, 2, ',', '.') }}
                                         </td>
 
-                                        {{-- Total Pago (Saldo Real da Reserva) --}}
+                                        {{-- Total Pago (DINÂMICO PELO DIA SELECIONADO) --}}
                                         <td class="px-4 py-4 text-right whitespace-nowrap">
-                                            <div
-                                                class="text-sm {{ $saldoRealReserva > 0 ? 'text-green-600' : 'text-gray-400' }} font-bold">
-                                                R$ {{ number_format($saldoRealReserva, 2, ',', '.') }}
+                                            <div class="text-sm text-green-600 font-bold">
+                                                R$ {{ number_format($pagoNoDia, 2, ',', '.') }}
                                             </div>
-                                            {{-- Alerta caso a movimentação de HOJE seja diferente do saldo total --}}
-                                            @if (abs($pagoNoDia - $saldoRealReserva) > 0.01 && $pagoNoDia != 0)
-                                                <div class="text-[9px] text-blue-500 italic">
-                                                    Entrou hoje: R$ {{ number_format($pagoNoDia, 2, ',', '.') }}
+                                            @if ($pagoGeral > $pagoNoDia)
+                                                <div class="text-[9px] text-gray-400 font-medium italic">
+                                                    Total Pago: R$ {{ number_format($pagoGeral, 2, ',', '.') }}
                                                 </div>
                                             @endif
                                         </td>
 
-                                        {{-- Restante (Saldo Devedor) --}}
+                                        {{-- Restante (Visual de Quitação) --}}
                                         <td class="px-4 py-4 text-right text-sm font-bold">
-                                            @if ($restanteNoDia > 0.01)
+                                            @if ($restante > 0)
                                                 <span class="text-red-600">R$
-                                                    {{ number_format($restanteNoDia, 2, ',', '.') }}</span>
+                                                    {{ number_format($restante, 2, ',', '.') }}</span>
                                             @else
-                                                <span
-                                                    class="text-green-500 flex items-center justify-end gap-1 font-black">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-                                                        viewBox="0 0 20 20" fill="currentColor">
-                                                        <path fill-rule="evenodd"
-                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                                            clip-rule="evenodd" />
+                                                <span class="text-green-500 flex items-center justify-end gap-1">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor"
+                                                        viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="3" d="M5 13l4 4L19 7"></path>
                                                     </svg>
                                                     QUITADO
                                                 </span>
@@ -607,19 +661,40 @@
 
                                         {{-- Ações --}}
                                         <td class="px-4 py-4 whitespace-nowrap text-center text-sm space-x-1">
-                                            @if ($restanteNoDia > 0.01)
+                                            @if ($canPay)
                                                 <button type="button"
-                                                    onclick="openPaymentModal({{ $reserva->id }}, {{ $valorDoHorario }}, {{ $restanteNoDia }}, {{ $saldoRealReserva }}, '{{ addslashes($reserva->client_name) }}')"
-                                                    class="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded transition shadow-sm">
+                                                    onclick="openPaymentModal({{ $reserva->id }}, {{ (float) $total }}, {{ (float) $restante }}, {{ (float) $pagoGeral }}, '{{ addslashes($reserva->client_name) }}', {{ $reserva->is_recurrent ? 'true' : 'false' }})"
+                                                    class="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                                    {{ $isActionDisabled ? 'disabled' : '' }}>
                                                     $ BAIXAR
+                                                </button>
+
+                                                @if ($canBeDebt)
+                                                    <button type="button"
+                                                        onclick="openDebtModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}')"
+                                                        class="bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                                        {{ $isActionDisabled ? 'disabled' : '' }}
+                                                        title="O cliente vai pagar em outro dia">
+                                                        🕒 P. DEPOIS
+                                                    </button>
+                                                @endif
+                                            @endif
+
+                                            @if ($canBeNoShow)
+                                                <button type="button"
+                                                    onclick="requisitarAutorizacao(() => openNoShowModal({{ $reserva->id }}, '{{ addslashes($reserva->client_name) }}', {{ (float) $pagoGeral }}))"
+                                                    class="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded transition {{ $isActionDisabled ? 'opacity-50 cursor-not-allowed' : '' }}"
+                                                    {{ $isActionDisabled ? 'disabled' : '' }}>
+                                                    X FALTA
                                                 </button>
                                             @endif
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">
-                                            Nenhum agendamento para esta data.
+                                        <td colspan="8"
+                                            class="px-4 py-8 text-center text-gray-500 italic font-medium">
+                                            Nenhum agendamento encontrado para esta data.
                                         </td>
                                     </tr>
                                 @endforelse
@@ -1755,30 +1830,18 @@
                 document.getElementById('modalReservaId').value = id;
                 document.getElementById('modalClientName').innerText = clientName;
 
-                // 🎯 AJUSTE DE LÓGICA: Se o 'remaining' (restante) for igual ao total,
-                // garantimos que o signalAmount (já pago) seja zerado para o cálculo do controlador.
-                let valorParaSugerir = remaining;
-                let sinalReal = signalAmount;
-
-                // Se o saldo a pagar na tela é o valor total do jogo (R$ 100),
-                // ignoramos pagamentos anteriores que podem ser estornos mal interpretados.
-                if (Math.abs(remaining - totalPrice) < 0.01) {
-                    sinalReal = 0;
-                    valorParaSugerir = totalPrice;
-                }
-
                 // 3. Formatação visual do sinal já pago
                 document.getElementById('modalSignalAmount').innerText =
-                    sinalReal.toLocaleString('pt-BR', {
+                    signalAmount.toLocaleString('pt-BR', {
                         style: 'currency',
                         currency: 'BRL'
                     });
 
-                // 4. Valores brutos para cálculos internos do Modal
-                document.getElementById('modalSignalAmountRaw').value = sinalReal.toFixed(2);
+                // 4. Valores brutos para cálculos
+                document.getElementById('modalSignalAmountRaw').value = signalAmount.toFixed(2);
                 document.getElementById('modalFinalPrice').value = totalPrice.toFixed(2);
 
-                // 5. Captura da data operacional
+                // 5. Captura da data operacional correta
                 const inputDataFiltro = document.querySelector('input[name="date"]');
                 const dataDoCaixa = inputDataFiltro ?
                     inputDataFiltro.value :
@@ -1786,35 +1849,25 @@
 
                 if (dataDoCaixa) {
                     document.getElementById('modalPaymentDate').value = dataDoCaixa;
+                    console.log("📅 Sistema operando na data:", dataDoCaixa);
+                } else {
+                    console.error("❌ Erro: Não foi possível capturar a data operacional.");
                 }
 
-                // 6. Controle da opção de aplicar a série (mensalistas)
+                // 6. Controle da opção de recorrência
                 const recurrentOption = document.getElementById('recurrentOption');
                 if (recurrentOption) {
-                    isRecurrent ? recurrentOption.classList.remove('hidden') : recurrentOption.classList.add('hidden');
+                    if (isRecurrent) {
+                        recurrentOption.classList.remove('hidden');
+                    } else {
+                        recurrentOption.classList.add('hidden');
+                    }
                 }
 
-                // 7. Sugere o valor correto para pagamento
-                const amountPaidInput = document.getElementById('modalAmountPaid');
-                if (amountPaidInput) {
-                    amountPaidInput.value = valorParaSugerir.toFixed(2);
-                }
+                // 7. Recalcula saldo automaticamente
+                calculateAmountDue();
 
-                // Reset do botão de envio
-                const submitBtn = document.querySelector('#paymentForm button[type="submit"]');
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = 'CONCLUIR PAGAMENTO';
-                    // Reset da trava global específica deste formulário para garantir que abra limpo
-                    if (window.caixaProcessandoGlobal) window.caixaProcessandoGlobal['paymentForm'] = false;
-                }
-
-                // 8. Recalcula os campos de saldo devedor no modal
-                if (typeof calculateAmountDue === "function") {
-                    calculateAmountDue();
-                }
-
-                // 9. Exibe o modal
+                // 8. Exibe o modal
                 const modal = document.getElementById('paymentModal');
                 if (modal) {
                     modal.classList.replace('hidden', 'flex');
@@ -2102,7 +2155,6 @@
                 const form = document.getElementById(formId);
                 if (!form) return;
 
-                // Impede múltiplas vinculações do mesmo evento (Idempotência no Front)
                 if (form.dataset.ajaxBound === "1") return;
                 form.dataset.ajaxBound = "1";
 
@@ -2111,22 +2163,16 @@
                 form.onsubmit = function(e) {
                     e.preventDefault();
 
-                    // 🛡️ TRAVA 1: Impede até o início da lógica se já houver um envio em curso
-                    if (window.caixaProcessandoGlobal[formId]) {
-                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo no Front-end para:", formId);
-                        return false;
-                    }
+                    // 🛑 TRAVA 1: Bloqueio físico imediato no envio
+                    if (window.caixaProcessandoGlobal[formId]) return false;
                     window.caixaProcessandoGlobal[formId] = true;
 
                     const enviarParaOServidor = (tokenRecebido = null) => {
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
 
-                        console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
-
                         if (btn) {
                             btn.disabled = true;
-                            btn.dataset.originalText = btn.innerText;
                             btn.innerText = "AGUARDE...";
                         }
                         if (spinner) spinner.classList.remove('hidden');
@@ -2149,17 +2195,22 @@
                             })
                             .then(res => res.json())
                             .then(json => {
-                                console.log("📥 [DEBUG] Resposta do Servidor:", json);
-
-                                // 🛡️ TRAVA 2: Silenciar alertas se a página já estiver finalizando ou for erro de duplicidade
+                                // --- 🛡️ FILTRO DE ALERTA AGRESSIVO ---
                                 const originalAlert = window.alert;
+
+                                // Sobrescrevemos o alert APENAS para esta resposta
                                 window.alert = function(msg) {
                                     const m = msg.toLowerCase();
-                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade") || m
-                                        .includes("anteriormente")) {
-                                        console.log("🔕 [SILENCIADOR] Alerta duplicado ignorado.");
-                                        return;
+
+                                    // Se já exibimos um sucesso ou é uma mensagem de duplicidade, CANCELA o alert
+                                    if (form.dataset.finalizado === "true" ||
+                                        m.includes("baixada anteriormente") ||
+                                        m.includes("ja foi fechado") ||
+                                        m.includes("duplicidade")) {
+                                        console.log("Mensagem duplicada bloqueada com sucesso.");
+                                        return; // O alert morre aqui, não aparece na tela
                                     }
+
                                     if (json.success) form.dataset.finalizado = "true";
                                     originalAlert(msg);
                                 };
@@ -2168,51 +2219,42 @@
                                     alert(json.message);
                                     window.location.reload();
                                 } else {
-                                    // Se o erro for DUPLICIDADE, tratamos como sucesso (pois o registro já existe)
-                                    if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
-                                        console.log("✅ [AUTO-RESOLVE] Registro já processado pelo servidor.");
-                                        window.location.reload();
-                                        return;
-                                    }
-
                                     alert(json.message || 'Erro ao processar.');
 
-                                    // 🔓 LIBERAÇÃO: Só destrava se NÃO for sucesso, permitindo corrigir erro de digitação
-                                    window.caixaProcessandoGlobal[formId] = false;
-                                    if (btn) {
-                                        btn.disabled = false;
-                                        btn.innerText = btn.dataset.originalText || "CONCLUIR";
+                                    // Só libera se não for sucesso, para permitir correção
+                                    if (form.dataset.finalizado !== "true") {
+                                        window.caixaProcessandoGlobal[formId] = false;
+                                        if (btn) {
+                                            btn.disabled = false;
+                                            btn.innerText = "CONCLUIR";
+                                        }
+                                        if (spinner) spinner.classList.add('hidden');
                                     }
-                                    if (spinner) spinner.classList.add('hidden');
                                 }
+
+                                // Devolve o alert original ao sistema após 1.5s
+                                setTimeout(() => {
+                                    window.alert = originalAlert;
+                                }, 1500);
                             })
                             .catch(err => {
-                                console.error("🔥 [DEBUG FATAL]:", err);
+                                console.error(err);
                                 window.caixaProcessandoGlobal[formId] = false;
-                                if (btn) {
-                                    btn.disabled = false;
-                                    btn.innerText = "TENTAR NOVAMENTE";
-                                }
+                                if (btn) btn.disabled = false;
                             });
                     };
 
-                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm', 'closeCashForm',
-                        'paymentForm'
+                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm',
+                        'closeCashForm'
                     ];
-
                     if (acoesCriticas.includes(formId) && userRole === 'colaborador') {
                         window.requisitarAutorizacao(token => {
-                            if (token) {
-                                enviarParaOServidor(token);
-                            } else {
-                                // Se cancelou a senha, destrava o formId para permitir tentar de novo
-                                window.caixaProcessandoGlobal[formId] = false;
-                            }
+                            if (token) enviarParaOServidor(token);
+                            else window.caixaProcessandoGlobal[formId] = false;
                         });
                     } else {
                         enviarParaOServidor();
                     }
-
                     return false;
                 };
             }
