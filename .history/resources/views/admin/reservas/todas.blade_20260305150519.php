@@ -320,7 +320,7 @@
                                     {{-- 5. STATUS DA RESERVA --}}
                                     <td class="px-4 py-3 text-center whitespace-nowrap">
                                         <span class="status-badge status-{{ $reserva->status }}">
-                                            {{ strtoupper($reserva->status) }}
+                                            AGUARDANDO
                                         </span>
                                     </td>
 
@@ -476,25 +476,73 @@
 
     {{-- SCRIPTS DE AÇÃO AJAX --}}
     <script>
-        // 1. Configurações Iniciais e CSRF
-        const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-        // Rotas Ativas (Apenas o que a tabela usa agora)
+        // Variáveis de Rota e Token
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        const CSRF_TOKEN = metaTag ? metaTag.getAttribute('content') : null;
+        // Usamos as rotas do web.php.
         const UPDATE_SLOT_STATUS_URL = '{{ route('admin.config.update_status', ':id') }}';
+        // 🆕 ROTA DE ATUALIZAÇÃO DE PREÇO
         const UPDATE_PRICE_URL = '{{ route('admin.reservas.update_price', ':id') }}';
 
-        // Variáveis de Controle
+
         let currentReservaId = null;
+        let currentMethod = null; // PATCH ou DELETE (Método Lógico)
+        let currentUrlBase = null;
+
+        // Adicione esta variável no topo do seu <script>
+        let currentReservaPaidAmount = 0;
+
+
+        // --- LÓGICA DE REGISTRO DE FALTA (NO SHOW) ---
+
+
+        /**
+         * Listener para Registro de Falta (No Show)
+         */
+        document.getElementById('confirm-noshow-btn').addEventListener('click', function() {
+            if (currentReservaId) {
+                // Ao registrar falta, enviamos o status 'noshow'
+                sendAjaxRequest(currentReservaId, 'POST', REGISTER_NOSHOW_URL, null, {
+                    status: 'no_show'
+                });
+            } else {
+                alert("Erro: Dados da reserva para registrar falta não configurados corretamente.");
+            }
+        });
+
+        // --- LÓGICA DE REATIVAÇÃO ---
+
+
+        /**
+         * Listener para Reativação
+         */
+        document.getElementById('confirm-reactivation-btn').addEventListener('click', function() {
+            if (currentReservaId && currentUrlBase) {
+                // Ao reativar, enviamos o status 'confirmed' e NÃO precisamos de justificativa.
+                sendAjaxRequest(currentReservaId, 'PATCH', currentUrlBase, null, {
+                    status: 'confirmed'
+                });
+            } else {
+                alert("Erro: Dados da reserva para reativação não configurados corretamente.");
+            }
+        });
+
+
+        // --- LÓGICA DE ALTERAÇÃO DE PREÇO ---
+
+        // Variável global para controle do estado de recorrência
         let isCurrentReservaRecurrent = false;
 
         /**
-         * LÓGICA DE ALTERAÇÃO DE PREÇO
+         * Abre o modal de alteração de preço com suporte a recorrência.
          */
         function openPriceUpdateModal(reservaId, currentPrice, targetName, isRecurrent) {
             currentReservaId = reservaId;
-            isCurrentReservaRecurrent = isRecurrent;
+            currentMethod = 'PATCH';
+            currentUrlBase = UPDATE_PRICE_URL;
+            isCurrentReservaRecurrent = isRecurrent; // Armazena o estado
 
-            // Popula os dados no modal de preço
+            // Limpa e popula dados básicos
             document.getElementById('price-update-target-name').textContent = targetName;
             document.getElementById('current-price-display').textContent =
                 `R$ ${parseFloat(currentPrice).toFixed(2).replace('.', ',')}`;
@@ -502,16 +550,19 @@
             document.getElementById('price-justification-input').value = '';
             document.getElementById('price-justification-error').classList.add('hidden');
 
-            // Mostra opções de série apenas se a reserva for recorrente
+            // Lógica para mostrar/esconder opções de recorrência
             const scopeContainer = document.getElementById('price-scope-container');
             if (scopeContainer) {
-                isRecurrent ? scopeContainer.classList.remove('hidden') : scopeContainer.classList.add('hidden');
+                if (isRecurrent) {
+                    scopeContainer.classList.remove('hidden');
+                } else {
+                    scopeContainer.classList.add('hidden');
+                }
             }
 
-            // Abre o modal
-            const modal = document.getElementById('price-update-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            // Exibe o modal
+            document.getElementById('price-update-modal').classList.remove('hidden');
+            document.getElementById('price-update-modal').classList.add('flex');
 
             setTimeout(() => {
                 document.getElementById('price-update-modal-content').classList.remove('opacity-0', 'scale-95');
@@ -519,74 +570,128 @@
             }, 10);
         }
 
+        /**
+         * Fecha o modal de alteração de preço.
+         */
         function closePriceUpdateModal() {
             document.getElementById('price-update-modal-content').classList.add('opacity-0', 'scale-95');
             setTimeout(() => {
-                const modal = document.getElementById('price-update-modal');
-                modal.classList.remove('flex');
-                modal.classList.add('hidden');
+                document.getElementById('price-update-modal').classList.remove('flex');
+                document.getElementById('price-update-modal').classList.add('hidden');
             }, 300);
         }
 
         /**
-         * EVENTO: Confirmar Novo Preço
+         * Listener para Confirmação da Alteração de Preço (Versão com Escopo)
          */
-        document.getElementById('confirm-price-update-btn')?.addEventListener('click', function() {
+        document.getElementById('confirm-price-update-btn').addEventListener('click', function() {
             const newPrice = parseFloat(document.getElementById('new-price-input').value);
             const justification = document.getElementById('price-justification-input').value.trim();
             const justificationError = document.getElementById('price-justification-error');
 
+            // 1. Validação de Preço
             if (isNaN(newPrice) || newPrice < 0) {
-                alert("Insira um preço válido.");
+                alert("Por favor, insira um preço válido (número maior ou igual a zero).");
+                document.getElementById('new-price-input').focus();
                 return;
             }
 
+            // 2. Validação de Justificativa
             if (justification.length < 5) {
-                justificationError.textContent = 'O motivo deve ter pelo menos 5 caracteres.';
+                justificationError.textContent =
+                    'Por favor, forneça um motivo de alteração com pelo menos 5 caracteres.';
                 justificationError.classList.remove('hidden');
+                document.getElementById('price-justification-input').focus();
                 return;
             }
+            justificationError.classList.add('hidden');
 
+            // 3. CAPTURA O ESCOPO (O pulo do gato)
+            // Se a reserva for recorrente, pegamos o valor do rádio. Se não for, enviamos 'single' por padrão.
             let scope = 'single';
             if (isCurrentReservaRecurrent) {
                 const selectedRadio = document.querySelector('input[name="price_scope"]:checked');
                 scope = selectedRadio ? selectedRadio.value : 'single';
             }
 
-            sendAjaxRequest(currentReservaId, 'PATCH', UPDATE_PRICE_URL, justification, {
-                new_price: newPrice,
-                scope: scope
-            });
+            if (currentReservaId) {
+                // 4. Envia a requisição AJAX incluindo o campo 'scope'
+                sendAjaxRequest(currentReservaId, 'PATCH', UPDATE_PRICE_URL, justification, {
+                    new_price: newPrice,
+                    scope: scope // O seu Controller Laravel vai usar isso para saber se faz o update em massa
+                });
+            } else {
+                alert("Erro: Dados da reserva para alteração de preço não configurados corretamente.");
+            }
         });
 
+
+        // --- FUNÇÕES GERAIS ---
+
         /**
-         * LÓGICA DE MANUTENÇÃO (SLOTS FIXOS)
+         * FUNÇÃO PARA ALTERNAR STATUS DE SLOT FIXO (Manutenção <-> Livre)
+         * Com verificação de ocupação e redirecionamento.
          */
         async function handleFixedSlotToggle(id, targetAction, isOccupied = false, clientName = '') {
+            // 1. Caso o gestor queira marcar MANUTENÇÃO em um horário que JÁ TEM CLIENTE
             if (targetAction === 'maintenance' && isOccupied) {
-                if (confirm(
-                        `🚨 CONFLITO: "${clientName}" está neste horário.\nDeseja ir para os DETALHES tratar este conflito e bloquear?`
-                    )) {
+                const proceed = confirm(
+                    `🚨 CONFLITO DETECTADO!\n\n` +
+                    `O cliente "${clientName}" tem uma reserva ativa neste horário.\n\n` +
+                    `Como a manutenção é um imprevisto da Arena, deseja ser redirecionado para os DETALHES desta reserva para aplicar a manutenção e tratar os valores pagos?`
+                );
+
+                if (proceed) {
+                    // ✅ Ajustado para usar o caminho absoluto do seu grupo de rotas prefixado com /admin
                     window.location.href = `/admin/reservas/${id}/show`;
                     return;
                 }
                 return;
             }
 
+            // 2. Lógica normal para slots vazios ou liberar manutenção
             const actionText = targetAction === 'confirmed' ? 'disponibilizar (Livre)' : 'marcar como Manutenção';
-            if (!confirm(`Confirma a ação de ${actionText} o horário?`)) return;
 
+            if (!confirm(`Confirma a ação de ${actionText} o horário ID #${id}?`)) {
+                return;
+            }
+
+            // Chama a função AJAX que você já tem no arquivo
             sendAjaxRequest(id, 'POST', UPDATE_SLOT_STATUS_URL, "Ajuste de disponibilidade de grade", {
                 status: targetAction
             });
         }
 
+
         /**
-         * MOTOR AJAX (Versão Simplificada e Direta)
+         * FUNÇÃO AJAX GENÉRICA PARA ENVIAR REQUISIÇÕES (Unificada para Cancelamento, Reativação, Falta, Preço e Slots Fixos)
          */
         async function sendAjaxRequest(reservaId, method, urlBase, reason = null, extraData = {}) {
             const url = urlBase.replace(':id', reservaId);
-            const submitBtn = document.getElementById('confirm-price-update-btn');
+
+            if (!CSRF_TOKEN) {
+                alert("Erro de segurança: Token CSRF não encontrado.");
+                return;
+            }
+
+            // Monta o body da requisição
+            const bodyData = {
+                cancellation_reason: reason,
+                justification: reason, // Para o controller de preço
+                _token: CSRF_TOKEN,
+                ...extraData,
+            };
+
+            // Se o método for PATCH ou DELETE, Laravel exige o campo _method via POST
+            if (['PATCH', 'DELETE'].includes(method)) {
+                bodyData._method = method;
+            }
+
+            // Identifica o botão de submissão ativo para feedback visual
+            const submitBtn = document.getElementById('confirm-cancellation-btn') ||
+                document.getElementById('confirm-reactivation-btn') ||
+                document.getElementById('confirm-noshow-btn') ||
+                document.getElementById('confirm-price-update-btn');
 
             if (submitBtn) {
                 submitBtn.disabled = true;
@@ -594,42 +699,107 @@
             }
 
             try {
-                const bodyData = {
-                    justification: reason,
-                    _token: CSRF_TOKEN,
-                    ...extraData
-                };
-
-                if (method === 'PATCH') bodyData._method = 'PATCH';
-
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json',
                         'X-CSRF-TOKEN': CSRF_TOKEN,
-                        'X-Requested-With': 'XMLHttpRequest'
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
                     },
                     body: JSON.stringify(bodyData)
                 });
 
-                const result = await response.json();
+                let result = {};
+                try {
+                    result = await response.json();
+                } catch (e) {
+                    const errorText = await response.text();
+                    console.error("Falha ao ler resposta do servidor:", errorText);
+                    result = {
+                        error: "Erro interno no servidor."
+                    };
+                }
 
                 if (response.ok && result.success) {
-                    alert(result.message || "Sucesso!");
-                    window.location.reload();
-                } else {
-                    alert("Erro: " + (result.message || result.error || "Erro no servidor"));
+                    alert(result.message || "Ação realizada com sucesso.");
+
+                    // Fecha todos os modais possíveis
+                    if (typeof closeCancellationModal === 'function') closeCancellationModal();
+                    if (typeof closeReactivationModal === 'function') closeReactivationModal();
+                    if (typeof closeNoShowModal === 'function') closeNoShowModal();
+                    if (typeof closePriceUpdateModal === 'function') closePriceUpdateModal();
+
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 50);
+
                 }
+                // ✅ TRATAMENTO ESPECIAL: Trava de Segurança do Caixa (Erros 400, 403 ou 500)
+                else if (response.status === 500 || response.status === 403 || response.status === 400) {
+                    const errorMsg = result.message || result.error || "Erro desconhecido";
+
+                    if (errorMsg.includes('Bloqueio de Segurança')) {
+                        alert("🛑 OPERAÇÃO NEGADA:\n\n" + errorMsg);
+                    } else {
+                        alert("Erro ao processar: " + errorMsg);
+                    }
+                }
+                // Erros de validação (Campos obrigatórios ou regras do Laravel)
+                else if (response.status === 422) {
+                    const errorMsg = result.errors ? Object.values(result.errors).flat().join('\n') : result.message;
+                    alert("⚠️ VALIDAÇÃO:\n" + errorMsg);
+
+                    // Se for erro no modal de preço, mostra a mensagem específica
+                    const priceError = document.getElementById('price-justification-error');
+                    if (priceError && document.getElementById('price-update-modal').offsetParent !== null) {
+                        priceError.textContent = errorMsg;
+                        priceError.classList.remove('hidden');
+                    }
+                } else {
+                    alert(result.error || result.message || `Erro status ${response.status}`);
+                }
+
             } catch (error) {
-                console.error(error);
-                alert("Erro de conexão. Verifique sua internet.");
+                console.error('Erro de Rede:', error);
+                alert("Erro de conexão. Verifique sua internet e tente novamente.");
             } finally {
                 if (submitBtn) {
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Confirmar Preço';
+                    // Restaura o texto original baseado no ID
+                    if (submitBtn.id === 'confirm-cancellation-btn') submitBtn.textContent = 'Confirmar Cancelamento';
+                    else if (submitBtn.id === 'confirm-reactivation-btn') submitBtn.textContent = 'Reativar Reserva';
+                    else if (submitBtn.id === 'confirm-noshow-btn') submitBtn.textContent = 'Confirmar Falta (No Show)';
+                    else if (submitBtn.id === 'confirm-price-update-btn') submitBtn.textContent = 'Confirmar Preço';
                 }
             }
         }
+
+        // --- Listener de Confirmação do Modal de Cancelamento (IGUALADO AO CONTROLLER) ---
+        document.getElementById('confirm-cancellation-btn').addEventListener('click', function() {
+            const reason = document.getElementById('cancellation-reason-input').value.trim();
+
+            // Captura o estado do checkbox de estorno
+            const estornoCheckbox = document.getElementById('estornar-credito-checkbox');
+
+            // TRADUÇÃO PARA O CONTROLLER:
+            // O seu PHP espera 'should_refund' (bool) e 'paid_amount_ref' (float)
+            const shouldRefund = estornoCheckbox ? estornoCheckbox.checked : false;
+
+            if (reason.length < 5) {
+                alert("Por favor, forneça um motivo de cancelamento com pelo menos 5 caracteres.");
+                return;
+            }
+
+            if (currentReservaId && currentMethod && currentUrlBase) {
+                // Enviamos os nomes que o seu ReservaController@cancelarPontual já utiliza
+                sendAjaxRequest(currentReservaId, currentMethod, currentUrlBase, reason, {
+                    should_refund: shouldRefund, // Substitui 'estornar_credito'
+                    paid_amount_ref: currentReservaPaidAmount // Passa o valor real para o estorno
+                });
+            } else {
+                alert("Erro: Dados da reserva não configurados corretamente.");
+            }
+        });
     </script>
 </x-app-layout>

@@ -320,7 +320,7 @@
                                     {{-- 5. STATUS DA RESERVA --}}
                                     <td class="px-4 py-3 text-center whitespace-nowrap">
                                         <span class="status-badge status-{{ $reserva->status }}">
-                                            {{ strtoupper($reserva->status) }}
+                                            AGUARDANDO
                                         </span>
                                     </td>
 
@@ -566,7 +566,7 @@
             if (targetAction === 'maintenance' && isOccupied) {
                 if (confirm(
                         `🚨 CONFLITO: "${clientName}" está neste horário.\nDeseja ir para os DETALHES tratar este conflito e bloquear?`
-                    )) {
+                        )) {
                     window.location.href = `/admin/reservas/${id}/show`;
                     return;
                 }
