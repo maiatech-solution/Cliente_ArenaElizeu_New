@@ -769,21 +769,21 @@ class AdminController extends Controller
         // Valor padrão continua sendo Rejeitada, ou o que vier no filtro
         $statusFilter = $request->input('status_filter', Reserva::STATUS_REJEITADA);
 
-        // 🚀 REMOVIDO: ->where('is_fixed', false) para permitir ver faltas de mensalistas
-        $query = Reserva::with(['arena', 'manager']);
+        $query = Reserva::where('is_fixed', false)
+            ->with(['arena', 'manager']);
 
-        // 🔄 Lógica de Intercalação Atualizada
+        // 🔄 Lógica de Intercalação Atualizada para incluir NO-SHOW
         if ($statusFilter === 'all') {
+            // Buscamos os 3 tipos de insucesso
             $query->whereIn('status', [
                 Reserva::STATUS_REJEITADA,
                 Reserva::STATUS_CANCELADA,
-                'no_show' // ❌ Status de falta
+                'no_show' // Certifique-se de usar a constante correta se houver na Model (ex: Reserva::STATUS_NOSHOW)
             ]);
         } else {
             $query->where('status', $statusFilter);
         }
 
-        // Filtros adicionais
         if ($arenaId) {
             $query->where('arena_id', $arenaId);
         }
@@ -795,7 +795,6 @@ class AdminController extends Controller
             });
         }
 
-        // Ordenação por data de atualização (o momento em que foi rejeitado/marcado falta)
         $reservas = $query->orderBy('updated_at', 'desc')
             ->paginate(15)
             ->appends($request->all());

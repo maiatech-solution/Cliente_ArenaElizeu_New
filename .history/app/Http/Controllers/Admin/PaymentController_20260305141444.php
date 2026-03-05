@@ -447,7 +447,7 @@ class PaymentController extends Controller
     public function registerNoShow(Request $request, $reservaId)
     {
         // 1. Carrega a reserva com as relações necessárias
-        $reserva = \App\Models\Reserva::with(['arena', 'user'])->findOrFail($reservaId);
+        $reserva = Reserva::with(['arena', 'user'])->findOrFail($reservaId);
 
         // --- 🎯 AJUSTE DE DATA OPERACIONAL ---
         $dataOperacional = $request->input('payment_date') ?? now()->toDateString();
@@ -462,7 +462,7 @@ class PaymentController extends Controller
         }
 
         try {
-            \DB::beginTransaction();
+            DB::beginTransaction();
 
             $totalOriginalPago = round((float) $reserva->total_paid, 2);
             $shouldRefund = $request->boolean('should_refund');
@@ -475,11 +475,11 @@ class PaymentController extends Controller
             if ($totalOriginalPago > 0) {
                 if ($shouldRefund && $valorParaEstornar > 0) {
                     // 💰 REGISTRA A SAÍDA (ESTORNO) NA DATA OPERACIONAL
-                    \App\Models\FinancialTransaction::create([
+                    FinancialTransaction::create([
                         'reserva_id'     => null,
                         'arena_id'       => $reserva->arena_id,
                         'user_id'        => $reserva->user_id,
-                        'manager_id'     => \Auth::id(),
+                        'manager_id'     => Auth::id(),
                         'amount'         => -$valorParaEstornar,
                         'type'           => 'refund',
                         'payment_method' => 'cash_out',
@@ -488,27 +488,27 @@ class PaymentController extends Controller
                     ]);
 
                     // Anota as transações antigas para auditoria
-                    \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
+                    FinancialTransaction::where('reserva_id', $reserva->id)
                         ->where('type', '!=', 'refund')
                         ->update([
                             'reserva_id'  => null,
-                            'description' => \DB::raw("CONCAT(description, ' (No-Show c/ Estorno em " . date('d/m') . ")')")
+                            'description' => DB::raw("CONCAT(description, ' (No-Show c/ Estorno em " . date('d/m') . ")')")
                         ]);
                 } else {
                     // 🔒 RETENÇÃO (Multa): O dinheiro fica no caixa, vira "Multa" e desvincula da reserva
-                    \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
+                    FinancialTransaction::where('reserva_id', $reserva->id)
                         ->update([
                             'reserva_id'     => null,
                             'type'           => 'no_show_penalty',
                             'payment_method' => 'retained_funds',
-                            'description'    => \DB::raw("CONCAT(description, ' [RETIDO COMO MULTA EM " . date('d/m') . " - Reserva #{$reserva->id}]')")
+                            'description'    => DB::raw("CONCAT(description, ' [RETIDO COMO MULTA EM " . date('d/m') . " - Reserva #{$reserva->id}]')")
                         ]);
 
                     // Log informativo no extrato do dia
-                    \App\Models\FinancialTransaction::create([
+                    FinancialTransaction::create([
                         'reserva_id'     => null,
                         'arena_id'       => $reserva->arena_id,
-                        'manager_id'     => \Auth::id(),
+                        'manager_id'     => Auth::id(),
                         'amount'         => 0,
                         'type'           => 'no_show_penalty',
                         'payment_method' => 'retained_funds',
@@ -532,24 +532,24 @@ class PaymentController extends Controller
                 app(\App\Http\Controllers\ReservaController::class)->recreateFixedSlot($reserva);
             }
 
-            // 🚀 A MUDANÇA CHAVE: Atualizamos o status para 'no_show' em vez de deletar
+            // 🚀 A MUDANÇA: Em vez de delete(), atualizamos o status para preservar o histórico
             $reserva->update([
                 'status' => 'no_show',
-                'managed_by' => \Auth::id(),
+                'managed_by' => Auth::id(),
                 'cancellation_reason' => '[Falta Registrada] ' . ($request->input('no_show_reason') ?? 'Cliente não compareceu'),
                 'is_fixed' => false,
-                'total_paid' => 0,
+                'total_paid' => 0, // Zera o pago da reserva pois o valor foi para multa/estorno no financeiro
                 'final_price' => 0,
             ]);
 
-            \DB::commit();
+            DB::commit();
             return response()->json([
                 'success' => true,
                 'message' => "Falta registrada e financeiro ajustado no caixa de {$labelData}."
             ]);
         } catch (\Exception $e) {
-            \DB::rollBack();
-            \Log::error("Erro no No-Show #{$reservaId}: " . $e->getMessage());
+            DB::rollBack();
+            Log::error("Erro no No-Show #{$reservaId}: " . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao processar: ' . $e->getMessage()

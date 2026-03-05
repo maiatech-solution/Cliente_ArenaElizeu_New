@@ -766,24 +766,21 @@ class AdminController extends Controller
         $search = $request->input('search');
         $arenaId = $request->input('arena_id');
 
-        // Valor padrão continua sendo Rejeitada, ou o que vier no filtro
+        // 🎯 O valor padrão agora vem da constante da Model
         $statusFilter = $request->input('status_filter', Reserva::STATUS_REJEITADA);
 
-        // 🚀 REMOVIDO: ->where('is_fixed', false) para permitir ver faltas de mensalistas
-        $query = Reserva::with(['arena', 'manager']);
+        $query = Reserva::where('is_fixed', false)
+            ->with(['arena', 'manager']);
 
-        // 🔄 Lógica de Intercalação Atualizada
+        // 🔄 Lógica de Intercalação usando as Constantes da Model
         if ($statusFilter === 'all') {
-            $query->whereIn('status', [
-                Reserva::STATUS_REJEITADA,
-                Reserva::STATUS_CANCELADA,
-                'no_show' // ❌ Status de falta
-            ]);
+            $query->whereIn('status', [Reserva::STATUS_REJEITADA, Reserva::STATUS_CANCELADA]);
         } else {
+            // Se o usuário selecionou 'canceled' no HTML, o Laravel converterá
+            // mas para garantir, vamos aceitar o que vier do request de forma dinâmica
             $query->where('status', $statusFilter);
         }
 
-        // Filtros adicionais
         if ($arenaId) {
             $query->where('arena_id', $arenaId);
         }
@@ -795,7 +792,6 @@ class AdminController extends Controller
             });
         }
 
-        // Ordenação por data de atualização (o momento em que foi rejeitado/marcado falta)
         $reservas = $query->orderBy('updated_at', 'desc')
             ->paginate(15)
             ->appends($request->all());

@@ -763,6 +763,8 @@ class AdminController extends Controller
      */
     public function indexReservasRejeitadas(Request $request)
     {
+        // Adicione isso e veja o que aparece na tela:
+        dd(Reserva::where('client_name', 'like', '%Juliana%')->pluck('status', 'client_name'));
         $search = $request->input('search');
         $arenaId = $request->input('arena_id');
 

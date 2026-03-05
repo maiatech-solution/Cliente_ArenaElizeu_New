@@ -59,33 +59,28 @@
 
                                     <div>
                                         <label for="status_filter"
-                                            class="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1 tracking-widest">
-                                            Ver apenas:
-                                        </label>
+                                            class="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1 tracking-widest">Ver
+                                            apenas:</label>
                                         <select name="status_filter" id="status_filter" onchange="this.form.submit()"
-                                            class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded-lg shadow-sm focus:ring-red-500 font-bold
-        {{ request('status_filter') == 'no_show' ? 'text-gray-700 dark:text-gray-300' : (request('status_filter') == 'rejected' ? 'text-red-600' : 'text-gray-900 dark:text-white') }}">
+                                            class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded-lg shadow-sm focus:ring-red-500 font-bold {{ request('status_filter') == 'no_show' ? 'text-gray-700' : 'text-red-600' }}">
 
                                             <option value="all"
-                                                {{ request('status_filter') == 'all' ? 'selected' : '' }}>
-                                                📂 Ver Todas
+                                                {{ request('status_filter') == 'all' ? 'selected' : '' }}>📂 Ver Todas
                                             </option>
 
                                             <option value="rejected"
                                                 {{ request('status_filter', 'rejected') == 'rejected' ? 'selected' : '' }}>
-                                                🚫 Rejeitadas (Gestor)
-                                            </option>
+                                                🚫 Rejeitadas (Gestor)</option>
 
                                             <option value="cancelled"
-                                                {{ request('status_filter') == 'cancelled' ? 'selected' : '' }}>
-                                                ⚠️ Canceladas (Cliente)
-                                            </option>
+                                                {{ request('status_filter') == 'cancelled' ? 'selected' : '' }}>⚠️
+                                                Canceladas (Cliente)</option>
 
-                                            {{-- 🎯 OPÇÃO DE FALTAS: Alinhada com o novo status do PaymentController --}}
+                                            {{-- 🎯 NOVA OPÇÃO: NO-SHOW --}}
                                             <option value="no_show"
-                                                {{ request('status_filter') == 'no_show' ? 'selected' : '' }}>
-                                                ❌ Faltas (No-Show)
-                                            </option>
+                                                {{ request('status_filter') == 'no_show' ? 'selected' : '' }}>❌ Faltas
+                                                (No-Show)</option>
+
                                         </select>
                                     </div>
 
