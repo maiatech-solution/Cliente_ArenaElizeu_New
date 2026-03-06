@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class FinanceiroController extends Controller
 {
-     /**
+    /**
      * Dashboard Principal (Hub de Relatórios) - MULTIQUADRA
      */
     public function index(Request $request)
@@ -25,7 +25,7 @@ class FinanceiroController extends Controller
         $mes = $dataFiltro->month;
         $ano = $dataFiltro->year;
 
-        // 💰 1. Faturamento Filtrado
+        // 💰 1. Faturamento Filtrado (Bruto Mensal)
         $faturamentoMensal = FinancialTransaction::whereMonth('paid_at', $mes)
             ->whereYear('paid_at', $ano)
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
@@ -38,27 +38,24 @@ class FinanceiroController extends Controller
             ->whereIn('status', [
                 Reserva::STATUS_CONFIRMADA,
                 Reserva::STATUS_CONCLUIDA,
-                Reserva::STATUS_LANCADA_CAIXA
+                Reserva::STATUS_LANCADA_CAIXA,
+                'completed'
             ])
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
             ->count();
 
         // 🚫 3. Faltas Filtradas (No-Show) - PRECISÃO TOTAL
-        // Conta as reservas marcadas como No-Show no período
         $reservasNoShowCount = Reserva::whereMonth('date', $mes)
             ->whereYear('date', $ano)
             ->where('status', Reserva::STATUS_NO_SHOW)
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
             ->count();
 
-        // Conta multas avulsas no financeiro (Apenas entradas > 0 sem reserva vinculada)
-        // Isso evita contar logs de estorno ou registros duplicados do mesmo evento
         $transacoesMultaCount = FinancialTransaction::whereMonth('paid_at', $mes)
             ->whereYear('paid_at', $ano)
             ->whereNull('reserva_id')
             ->where('amount', '>', 0)
             ->where(function ($q) {
-                // Filtra pelo termo exato gerado pelo sistema de multa do caixa
                 $q->where('description', 'like', '%Multa de Falta%')
                     ->orWhere('description', 'like', '%No-Show%');
             })
@@ -67,16 +64,28 @@ class FinanceiroController extends Controller
 
         $canceladasMes = $reservasNoShowCount + $transacoesMultaCount;
 
-        // 💸 4. Cálculo de Dívidas Pendentes (R$ 120,00 - Confirmado)
-        $totalGlobalDividas = Reserva::whereIn('status', [Reserva::STATUS_CONCLUIDA, Reserva::STATUS_NO_SHOW])
+        // 💸 4. Cálculo de Dívidas Pendentes (PRECISÃO LÍQUIDA)
+        // Buscamos as reservas que constam como devendo...
+        $totalGlobalDividas = Reserva::whereIn('status', [Reserva::STATUS_CONCLUIDA, Reserva::STATUS_NO_SHOW, 'completed'])
             ->whereMonth('date', $mes)
             ->whereYear('date', $ano)
             ->whereIn('payment_status', ['unpaid', 'partial'])
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
+            ->with('transactions') // Eager loading para performance
             ->get()
             ->sum(function ($r) {
-                // Soma a diferença entre o preço final e o que já foi pago
-                return ($r->final_price ?? $r->price) - $r->total_paid;
+                $valorVenda = (float) ($r->final_price ?? $r->price);
+
+                // 🎯 A MÁGICA: Soma o que está na reserva + estornos órfãos tagueados com #ID
+                $somaVinculada = (float) $r->transactions->sum('amount');
+                $somaOrfa = (float) \App\Models\FinancialTransaction::whereNull('reserva_id')
+                    ->where('description', 'LIKE', "%#{$r->id}%")
+                    ->sum('amount');
+
+                $saldoPagoLiquido = round($somaVinculada + $somaOrfa, 2);
+
+                // Se o saldo líquido for 0 (como o Adalberto após manutenção), ele deve o valor cheio.
+                return max(0, $valorVenda - $saldoPagoLiquido);
             });
 
         $arenas = Arena::all();
@@ -348,23 +357,27 @@ class FinanceiroController extends Controller
      * Relatório 06: Dívidas Pendentes (Inadimplência Geral)
      * Lista todas as reservas 'completed' que não foram totalmente pagas.
      */
+    /**
+     * Relatório 06: Dívidas Pendentes (Inadimplência Geral)
+     * Lista todas as reservas 'completed' que não foram totalmente pagas.
+     */
     public function relatorioDividas(Request $request)
     {
         $arenaId = $request->get('arena_id');
         $search = $request->get('search');
 
-        // Buscamos apenas reservas que o jogo aconteceu (completed)
-        // mas o pagamento está pendente ou parcial.
-        $query = Reserva::with(['user', 'arena'])
-            ->where('status', 'completed')
+        // 1. Buscamos reservas 'completed' ou 'no_show' com pendência financeira
+        // Adicionamos o with('transactions') para performance
+        $query = Reserva::with(['user', 'arena', 'transactions'])
+            ->whereIn('status', ['completed', 'concluida', 'no_show'])
             ->whereIn('payment_status', ['unpaid', 'partial']);
 
-        // Filtro por Arena (Opcional)
+        // 2. Filtro por Arena (Opcional)
         if ($arenaId) {
             $query->where('arena_id', $arenaId);
         }
 
-        // Filtro por Nome ou ID (Opcional)
+        // 3. Filtro por Nome ou ID (Opcional)
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('client_name', 'like', "%{$search}%")
@@ -372,18 +385,28 @@ class FinanceiroController extends Controller
             });
         }
 
-        // Ordenamos das mais recentes para as mais antigas
+        // 4. Paginação mantendo a ordem cronológica inversa
         $dividas = $query->orderBy('date', 'desc')
             ->orderBy('start_time', 'desc')
             ->paginate(30)
             ->withQueryString();
 
-        // Calculamos o total global de dívidas para o resumo do relatório
+        // 5. 🎯 CÁLCULO DO TOTAL GLOBAL COM PRECISÃO DE ESTORNOS
         $totalGlobalDividas = $query->get()->sum(function ($r) {
-            return ($r->final_price ?? $r->price) - $r->total_paid;
+            $valorVenda = (float) ($r->final_price ?? $r->price);
+
+            // Soma vinculadas + Órfãs tagueadas com #ID
+            $diretas = (float) $r->transactions->sum('amount');
+            $orfas = (float) \App\Models\FinancialTransaction::whereNull('reserva_id')
+                ->where('description', 'LIKE', "%#{$r->id}%")
+                ->sum('amount');
+
+            $pagoReal = round($diretas + $orfas, 2);
+
+            return max(0, $valorVenda - $pagoReal);
         });
 
-        $arenas = Arena::all();
+        $arenas = \App\Models\Arena::all();
 
         return view('admin.financeiro.dividas', compact('dividas', 'totalGlobalDividas', 'arenas'));
     }

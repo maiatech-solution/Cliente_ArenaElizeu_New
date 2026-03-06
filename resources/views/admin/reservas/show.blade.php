@@ -17,26 +17,26 @@
             </div>
 
             @php
-                $statusClass =
-                    [
-                        'pending' => 'bg-orange-100 text-orange-700 border-orange-200',
-                        'confirmed' => 'bg-indigo-100 text-indigo-700 border-indigo-200',
-                        'cancelled' => 'bg-red-100 text-red-700 border-red-200',
-                        'rejected' => 'bg-gray-100 text-gray-700 border-gray-200',
-                        'expired' => 'bg-yellow-100 text-yellow-700 border-yellow-200',
-                        'no_show' => 'bg-black text-white border-gray-900',
-                        'maintenance' => 'bg-pink-100 text-pink-700 border-pink-200',
-                    ][$reserva->status] ?? 'bg-gray-100 text-gray-700';
+            $statusClass =
+            [
+            'pending' => 'bg-orange-100 text-orange-700 border-orange-200',
+            'confirmed' => 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'cancelled' => 'bg-red-100 text-red-700 border-red-200',
+            'rejected' => 'bg-gray-100 text-gray-700 border-gray-200',
+            'expired' => 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            'no_show' => 'bg-black text-white border-gray-900',
+            'maintenance' => 'bg-pink-100 text-pink-700 border-pink-200',
+            ][$reserva->status] ?? 'bg-gray-100 text-gray-700';
 
-                $statusLabels = [
-                    'pending' => 'Pendente',
-                    'confirmed' => 'Confirmado',
-                    'cancelled' => 'Cancelado',
-                    'rejected' => 'Rejeitado',
-                    'expired' => 'Expirado',
-                    'no_show' => 'Falta',
-                    'maintenance' => 'Manutenção',
-                ];
+            $statusLabels = [
+            'pending' => 'Pendente',
+            'confirmed' => 'Confirmado',
+            'cancelled' => 'Cancelado',
+            'rejected' => 'Rejeitado',
+            'expired' => 'Expirado',
+            'no_show' => 'Falta',
+            'maintenance' => 'Manutenção',
+            ];
             @endphp
 
             <span class="px-4 py-1 rounded-full text-xs font-black uppercase border {{ $statusClass }}">
@@ -68,15 +68,15 @@
 
                                     {{-- Botão de Sincronizar --}}
                                     @if ($reserva->user_id)
-                                        <form action="{{ route('admin.reservas.sincronizar', $reserva->id) }}"
-                                            method="POST" class="inline">
-                                            @csrf
-                                            <button type="submit"
-                                                class="inline-flex items-center gap-1 text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-3 py-1 rounded-full hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-blue-100"
-                                                title="Atualizar dados com base no cadastro do cliente">
-                                                🔄 Sincronizar Dados
-                                            </button>
-                                        </form>
+                                    <form action="{{ route('admin.reservas.sincronizar', $reserva->id) }}"
+                                        method="POST" class="inline">
+                                        @csrf
+                                        <button type="submit"
+                                            class="inline-flex items-center gap-1 text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-3 py-1 rounded-full hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-blue-100"
+                                            title="Atualizar dados com base no cadastro do cliente">
+                                            🔄 Sincronizar Dados
+                                        </button>
+                                    </form>
                                     @endif
                                 </div>
 
@@ -87,15 +87,15 @@
 
                                     {{-- Botão de WhatsApp --}}
                                     @if ($reserva->client_contact && in_array($reserva->status, ['confirmed', 'pending', 'maintenance', 'completed']))
-                                        <a href="https://wa.me/55{{ preg_replace('/\D/', '', $reserva->client_contact) }}"
-                                            target="_blank" title="Conversar com cliente"
-                                            class="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-600 rounded-full hover:bg-emerald-500 hover:text-white transition-all shadow-sm">
-                                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                                                <path
-                                                    d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.393 0 12.029c0 2.119.554 4.188 1.605 6.03l-1.706 6.23 6.376-1.674c1.776.968 3.774 1.478 5.811 1.48h.005c6.632 0 12.029-5.396 12.032-12.033.002-3.216-1.25-6.237-3.535-8.524">
-                                                </path>
-                                            </svg>
-                                        </a>
+                                    <a href="https://wa.me/55{{ preg_replace('/\D/', '', $reserva->client_contact) }}"
+                                        target="_blank" title="Conversar com cliente"
+                                        class="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-600 rounded-full hover:bg-emerald-500 hover:text-white transition-all shadow-sm">
+                                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .018 5.393 0 12.029c0 2.119.554 4.188 1.605 6.03l-1.706 6.23 6.376-1.674c1.776.968 3.774 1.478 5.811 1.48h.005c6.632 0 12.029-5.396 12.032-12.033.002-3.216-1.25-6.237-3.535-8.524">
+                                            </path>
+                                        </svg>
+                                    </a>
                                     @endif
                                 </div>
                             </div>
@@ -104,7 +104,8 @@
                                 <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Data e
                                     Horário</label>
                                 <p class="text-xl font-bold dark:text-gray-200">
-                                    {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }}</p>
+                                    {{ \Carbon\Carbon::parse($reserva->date)->format('d/m/Y') }}
+                                </p>
                                 <p class="text-indigo-600 font-black">
                                     {{ \Carbon\Carbon::parse($reserva->start_time)->format('H:i') }}h -
                                     {{ \Carbon\Carbon::parse($reserva->end_time)->format('H:i') }}h
@@ -144,20 +145,23 @@
                         <table class="w-full text-left">
                             <tbody class="divide-y dark:divide-gray-700">
                                 @forelse($reserva->transactions as $transacao)
-                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
-                                        <td class="px-8 py-4 font-mono text-[11px] dark:text-gray-400">
-                                            {{ $transacao->paid_at->format('d/m/Y H:i') }}</td>
-                                        <td class="px-8 py-4 uppercase text-[10px] font-bold dark:text-gray-300">
-                                            {{ $transacao->payment_method }}</td>
-                                        <td class="px-8 py-4 text-right font-black text-emerald-600">R$
-                                            {{ number_format($transacao->amount, 2, ',', '.') }}</td>
-                                    </tr>
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
+                                    <td class="px-8 py-4 font-mono text-[11px] dark:text-gray-400">
+                                        {{ $transacao->paid_at->format('d/m/Y H:i') }}
+                                    </td>
+                                    <td class="px-8 py-4 uppercase text-[10px] font-bold dark:text-gray-300">
+                                        {{ $transacao->payment_method }}
+                                    </td>
+                                    <td class="px-8 py-4 text-right font-black text-emerald-600">R$
+                                        {{ number_format($transacao->amount, 2, ',', '.') }}
+                                    </td>
+                                </tr>
                                 @empty
-                                    <tr>
-                                        <td colspan="3"
-                                            class="px-8 py-10 text-center text-gray-400 uppercase text-[10px] font-black italic tracking-widest">
-                                            Sem movimentações</td>
-                                    </tr>
+                                <tr>
+                                    <td colspan="3"
+                                        class="px-8 py-10 text-center text-gray-400 uppercase text-[10px] font-black italic tracking-widest">
+                                        Sem movimentações</td>
+                                </tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -197,29 +201,29 @@
                     <div
                         class="bg-white dark:bg-gray-800 p-6 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
                         @php
-                            $isColab = auth()->user()->role === 'colaborador';
-                            $totalPaidVal = $reserva->total_paid ?? 0;
-                            $isClosedCashier = \App\Models\Cashier::where('date', $reserva->date)
-                                ->where('status', 'closed')
-                                ->exists();
+                        $isColab = auth()->user()->role === 'colaborador';
+                        $totalPaidVal = $reserva->total_paid ?? 0;
+                        $isClosedCashier = \App\Models\Cashier::where('date', $reserva->date)
+                        ->where('status', 'closed')
+                        ->exists();
                         @endphp
 
                         {{-- 📱 NOTIFICAÇÕES WHATSAPP --}}
                         @if (session('whatsapp_link'))
-                            <div id="waNotificationCard"
-                                class="p-4 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-100 dark:border-emerald-800 rounded-2xl mb-2 flex items-center justify-between group">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xl">📱</span>
-                                    <div>
-                                        <p class="text-[9px] font-black text-emerald-600 uppercase tracking-widest">
-                                            Notificação Pronta</p>
-                                        <p class="text-[11px] text-emerald-800 dark:text-emerald-200 font-bold">Avisar
-                                            cliente?</p>
-                                    </div>
+                        <div id="waNotificationCard"
+                            class="p-4 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-100 dark:border-emerald-800 rounded-2xl mb-2 flex items-center justify-between group">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">📱</span>
+                                <div>
+                                    <p class="text-[9px] font-black text-emerald-600 uppercase tracking-widest">
+                                        Notificação Pronta</p>
+                                    <p class="text-[11px] text-emerald-800 dark:text-emerald-200 font-bold">Avisar
+                                        cliente?</p>
                                 </div>
-                                <a id="waNotificationBtn" href="{{ session('whatsapp_link') }}" target="_blank"
-                                    class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-md">Enviar</a>
                             </div>
+                            <a id="waNotificationBtn" href="{{ session('whatsapp_link') }}" target="_blank"
+                                class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-md">Enviar</a>
+                        </div>
                         @endif
 
                         <div id="waNotificationCardManual"
@@ -239,81 +243,70 @@
 
                         {{-- 🛠️ AÇÃO SE FOR MANUTENÇÃO --}}
                         @if ($reserva->status === 'maintenance')
-                            <div class="space-y-3">
-                                <div
-                                    class="p-4 bg-pink-50 dark:bg-pink-900/20 border border-pink-100 dark:border-pink-800 rounded-2xl text-center">
-                                    <p class="text-xs font-bold text-pink-700 dark:text-pink-300 uppercase">Horário em
-                                        Manutenção</p>
-                                </div>
-                                <button type="button"
-                                    onclick="{{ $isColab ? 'window.requisitarAutorizacao(token => { if(token) openReactivateModal() })' : 'openReactivateModal()' }}"
-                                    class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-indigo-700 transition shadow-lg">
-                                    🔄 Finalizar Manutenção / Liberar
-                                </button>
+                        <div class="space-y-3">
+                            <div
+                                class="p-4 bg-pink-50 dark:bg-pink-900/20 border border-pink-100 dark:border-pink-800 rounded-2xl text-center">
+                                <p class="text-xs font-bold text-pink-700 dark:text-pink-300 uppercase">Horário em
+                                    Manutenção</p>
                             </div>
+                            <button type="button"
+                                onclick="{{ $isColab ? 'window.requisitarAutorizacao(token => { if(token) openReactivateModal() })' : 'openReactivateModal()' }}"
+                                class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-indigo-700 transition shadow-lg">
+                                🔄 Finalizar Manutenção / Liberar
+                            </button>
+                        </div>
                         @endif
 
                         {{-- 1️⃣ STATUS PENDENTE --}}
                         @if ($reserva->status === 'pending')
-                            <form method="POST" action="{{ route('admin.reservas.confirmar', $reserva) }}">
-                                @csrf @method('PATCH')
-                                <button type="submit"
-                                    class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-emerald-700 transition shadow-lg">
-                                    Aprovar Reserva
-                                </button>
-                            </form>
+                        <form method="POST" action="{{ route('admin.reservas.confirmar', $reserva) }}">
+                            @csrf @method('PATCH')
+                            <button type="submit"
+                                class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-emerald-700 transition shadow-lg">
+                                Aprovar Reserva
+                            </button>
+                        </form>
                         @endif
 
                         {{-- 2️⃣ STATUS CONFIRMADO OU CONCLUÍDO --}}
                         @if (in_array($reserva->status, ['confirmed', 'completed']))
-                            <div class="space-y-3">
-                                @php $saldoRestanteAcoes = $reserva->price - $totalPaidVal; @endphp
+                        <div class="space-y-3">
+                            @php $saldoRestanteAcoes = $reserva->price - $totalPaidVal; @endphp
 
-                                @if ($saldoRestanteAcoes > 0)
-                                    <a href="{{ route('admin.payment.index', ['reserva_id' => $reserva->id, 'date' => \Carbon\Carbon::parse($reserva->date)->format('Y-m-d'), 'arena_id' => $reserva->arena_id]) }}"
-                                        class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-indigo-700 transition shadow-lg flex items-center justify-center gap-2 block text-center">
-                                        <span>💶 Receber Saldo (R$
-                                            {{ number_format($saldoRestanteAcoes, 2, ',', '.') }})</span>
-                                    </a>
-                                @else
-                                    <div
-                                        class="w-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 py-3 rounded-2xl font-black text-[10px] uppercase text-center border border-emerald-100 dark:border-emerald-800">
-                                        ✅ Jogo Totalmente Pago
-                                    </div>
-                                @endif
-
-                                @if (!$isClosedCashier)
-                                    <button type="button"
-                                        onclick="{{ $isColab ? "window.requisitarAutorizacao(token => { if(token) openMaintenanceModal('{$reserva->id}', '{$totalPaidVal}') })" : "openMaintenanceModal('{$reserva->id}', '{$totalPaidVal}')" }}"
-                                        class="w-full bg-pink-50 text-pink-600 py-3 rounded-2xl font-black text-[10px] uppercase hover:bg-pink-600 hover:text-white transition border border-pink-100 mt-2">
-                                        🛠️ Bloquear p/ Manutenção
-                                    </button>
-                                @endif
+                            @if ($saldoRestanteAcoes > 0)
+                            <a href="{{ route('admin.payment.index', ['reserva_id' => $reserva->id, 'date' => \Carbon\Carbon::parse($reserva->date)->format('Y-m-d'), 'arena_id' => $reserva->arena_id]) }}"
+                                class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-indigo-700 transition shadow-lg flex items-center justify-center gap-2 block text-center">
+                                <span>💶 Receber Saldo (R$
+                                    {{ number_format($saldoRestanteAcoes, 2, ',', '.') }})</span>
+                            </a>
+                            @else
+                            <div
+                                class="w-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 py-3 rounded-2xl font-black text-[10px] uppercase text-center border border-emerald-100 dark:border-emerald-800">
+                                ✅ Jogo Totalmente Pago
                             </div>
+                            @endif
 
-                            {{-- 🚩 ZONA DE RISCO: Cancelar --}}
-                            <div class="pt-4 mt-4 border-t border-gray-100 dark:border-gray-700 space-y-2 text-center">
-                                <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Ações
-                                    Sensíveis</p>
+                            @if (!$isClosedCashier)
+                            <button type="button"
+                                onclick="{{ $isColab ? "window.requisitarAutorizacao(token => { if(token) openMaintenanceModal('{$reserva->id}', '{$totalPaidVal}') })" : "openMaintenanceModal('{$reserva->id}', '{$totalPaidVal}')" }}"
+                                class="w-full bg-pink-50 text-pink-600 py-3 rounded-2xl font-black text-[10px] uppercase hover:bg-pink-600 hover:text-white transition border border-pink-100 mt-2">
+                                🛠️ Bloquear p/ Manutenção
+                            </button>
+                            @endif
+                        </div>
 
-                                <button type="button"
-                                    onclick="{{ $isColab ? "window.requisitarAutorizacao(token => { if(token) openCancellationModal('{$reserva->client_name}', '{$reserva->id}', '" . route('admin.reservas.cancelar_pontual', $reserva) . "', 'CANCELAR RESERVA') })" : "openCancellationModal('{$reserva->client_name}', '{$reserva->id}', '" . route('admin.reservas.cancelar_pontual', $reserva) . "', 'CANCELAR RESERVA')" }}"
-                                    class="w-full py-2 text-[10px] font-black uppercase text-red-400 hover:text-red-600 transition">
-                                    🗑️ Cancelar Agendamento
-                                </button>
-                            </div>
                         @endif
 
                         {{-- 3️⃣ MOTIVO SE CANCELADO/REJEITADO --}}
                         @if ($reserva->status === 'cancelled' || $reserva->status === 'rejected')
-                            <div
-                                class="p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-800">
-                                <label class="text-[9px] font-black text-red-500 uppercase block mb-1">Motivo da
-                                    Inatividade</label>
-                                <p class="text-xs text-red-700 dark:text-red-300 italic">
-                                    "{{ $reserva->cancellation_reason ?? 'Não informado' }}"
-                                </p>
-                            </div>
+                        <div
+                            class="p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-800">
+                            <label class="text-[9px] font-black text-red-500 uppercase block mb-1">Motivo da
+                                Inatividade</label>
+                            <p class="text-xs text-red-700 dark:text-red-300 italic">
+                                "{{ $reserva->cancellation_reason ?? 'Não informado' }}"
+                            </p>
+                        </div>
                         @endif
                     </div>
 
@@ -368,19 +361,19 @@
 
                             {{-- OPÇÃO 2: CRÉDITO (Apenas Mensalistas) --}}
                             @if ($reserva->is_recurrent)
-                                <label
-                                    class="relative flex flex-col p-4 border-2 border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50/30">
-                                    <div class="flex items-center gap-3">
-                                        <input type="radio" name="finance_action" value="credit"
-                                            class="text-indigo-600 focus:ring-indigo-500">
-                                        <span class="font-black text-xs uppercase text-gray-700 dark:text-gray-300">
-                                            Transferir p/ Próximo Jogo
-                                        </span>
-                                    </div>
-                                    <p class="text-[10px] text-indigo-600 mt-2 font-bold uppercase italic">
-                                        ✅ O valor será movido para a reserva da semana seguinte.
-                                    </p>
-                                </label>
+                            <label
+                                class="relative flex flex-col p-4 border-2 border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50/30">
+                                <div class="flex items-center gap-3">
+                                    <input type="radio" name="finance_action" value="credit"
+                                        class="text-indigo-600 focus:ring-indigo-500">
+                                    <span class="font-black text-xs uppercase text-gray-700 dark:text-gray-300">
+                                        Transferir p/ Próximo Jogo
+                                    </span>
+                                </div>
+                                <p class="text-[10px] text-indigo-600 mt-2 font-bold uppercase italic">
+                                    ✅ O valor será movido para a reserva da semana seguinte.
+                                </p>
+                            </label>
                             @endif
                         </div>
                     </div>
@@ -473,11 +466,8 @@
         </div>
     </div>
 
-    {{-- Script e Modal de Cancelamento --}}
-    @include('admin.reservas.confirmation_modal')
 
     <script>
-        let currentCancellationUrl = '';
         window.currentReservaMaintenanceId = "{{ $reserva->id }}";
         // Variável global para armazenar o token obtido no modal de autorização
         window.currentAuthToken = '';
@@ -504,53 +494,6 @@
             }
         }
 
-        // =========================================================================
-        // ❌ LÓGICA DE CANCELAMENTO
-        // =========================================================================
-        function openCancellationModal(clientName, reservaId, url, actionLabel) {
-            document.getElementById('modalTitle').textContent = actionLabel;
-            document.getElementById('clientNamePlaceholder').textContent = clientName;
-            document.getElementById('cancellationReservaId').value = reservaId;
-            currentCancellationUrl = url;
-            document.getElementById('cancellation_reason').value = '';
-            document.getElementById('cancellationReasonModal').classList.remove('hidden');
-        }
-
-        function closeCancellationModal() {
-            document.getElementById('cancellationReasonModal').classList.add('hidden');
-        }
-
-        safeAddEventListener('cancellationForm', 'submit', function(e) {
-            e.preventDefault();
-            const reason = document.getElementById('cancellation_reason').value;
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-            if (!reason || reason.length < 5) {
-                alert('Por favor, informe um motivo com pelo menos 5 caracteres.');
-                return;
-            }
-
-            fetch(currentCancellationUrl, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-AUTHORIZATION-TOKEN': window.currentAuthToken || '', // Envia o token se houver
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        cancellation_reason: reason,
-                        should_refund: 0,
-                        paid_amount_ref: 0
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    goBackAndReload();
-                })
-                .catch(error => alert('Erro ao processar: ' + error.message));
-        });
 
         // =========================================================================
         // 🛠️ LÓGICA DE MANUTENÇÃO (BLOQUEIO)

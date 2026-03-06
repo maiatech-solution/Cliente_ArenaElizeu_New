@@ -79,15 +79,26 @@ class PaymentController extends Controller
         $searchTerm = $request->input('search');
         $filterDebts = $request->input('filter') === 'debts';
 
+        // 🕵️ LOG DE ENTRADA DO CAIXA
+        \Log::info("=== MONITOR DE CAIXA ===");
+        \Log::info("Data Selecionada: " . $selectedDateString);
+        \Log::info("Arena Selecionada: " . ($selectedArenaId ?? 'Todas'));
+
         // 1. GLOBAL: Transações de todas as arenas (Para os cards laterais não zerarem)
         $allTransactionsOfDay = FinancialTransaction::whereDate('paid_at', $dateObject)->get();
 
-        // 2. FILTRADO: Transações da arena selecionada
+        // 2. FILTRADO: Transações da arena selecionada com LOG de Auditoria
         $financialTransactions = FinancialTransaction::whereDate('paid_at', $dateObject)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->with(['reserva', 'manager', 'payer', 'arena'])
             ->orderBy('paid_at', 'desc')
             ->get();
+
+        // 🕵️ DEBUG DE TRANSAÇÕES NO LOG
+        \Log::info("Transações encontradas no BD: " . $financialTransactions->count());
+        foreach ($financialTransactions as $ft) {
+            \Log::info("ID: {$ft->id} | Valor: {$ft->amount} | Tipo: {$ft->type} | Arena: {$ft->arena_id} | Reserva ID: " . ($ft->reserva_id ?? 'NULL'));
+        }
 
         // 3. IDs de reservas com movimentação hoje
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
@@ -119,18 +130,29 @@ class PaymentController extends Controller
             ->orderBy($filterDebts ? 'date' : 'start_time', 'asc')
             ->get();
 
-        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (AUTO-CORREÇÃO)
-        // Isso garante que o 'total_paid' na tabela 'reservas' reflita a soma real do extrato (Líquido)
+        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (VERSÃO CORRIGIDA)
+        // Agora considera transações vinculadas + estornos/no-shows desvinculados (descrição com #ID)
         foreach ($reservas as $reserva) {
-            $realPaid = (float) $reserva->transactions->sum('amount');
-            if (round((float)$reserva->total_paid, 2) !== round($realPaid, 2)) {
+            $diretas = (float) $reserva->transactions->sum('amount');
+
+            // Busca estornos manuais ou automáticos que mencionam o ID da reserva na descrição
+            $desvinculadas = (float) FinancialTransaction::whereNull('reserva_id')
+                ->where('arena_id', $reserva->arena_id)
+                ->where('description', 'LIKE', "%#{$reserva->id}%")
+                ->sum('amount');
+
+            $realPaid = round($diretas + $desvinculadas, 2);
+
+            if (round((float)$reserva->total_paid, 2) !== $realPaid) {
+                \Log::info("Sincronizando Reserva #{$reserva->id}: Antigo: {$reserva->total_paid} | Novo Real: {$realPaid}");
                 $reserva->total_paid = $realPaid;
                 \DB::table('reservas')->where('id', $reserva->id)->update(['total_paid' => $realPaid]);
             }
         }
 
         // 5. Saldo Líquido Real do Dia
-        $totalRecebidoDiaLiquido = $financialTransactions->sum('amount');
+        $totalRecebidoDiaLiquido = round((float) $financialTransactions->sum('amount'), 2);
+        \Log::info("Saldo Líquido Final Calculado: " . $totalRecebidoDiaLiquido);
 
         // 6. Lógica de Status do Caixa e Histórico
         $cashierRecord = Cashier::where('date', $selectedDateString)
@@ -171,11 +193,9 @@ class PaymentController extends Controller
             'cashierStatus'           => $cashierStatus,
             'cashierHistory'          => $cashierHistory,
             'totalReservasDia'        => $reservas->count(),
-            // 🎯 Cálculo Preciso do que falta receber (Confirmados/Pendentes)
             'totalPending'            => $reservas->whereIn('status', ['confirmed', 'pending'])
                 ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
             'noShowCount'             => $noShowCount,
-            // 🎯 Cálculo Preciso da Dívida Autorizada (Completed)
             'totalAuthorizedDebt'     => $reservas->where('status', 'completed')
                 ->whereIn('payment_status', ['unpaid', 'partial'])
                 ->sum(fn($r) => max(0, (float)($r->final_price ?? $r->price) - (float)$r->total_paid)),
@@ -330,8 +350,7 @@ class PaymentController extends Controller
 
 
     /**
-     * Processa o Pagamento (Blindado contra duplicidade e erro de saldo)
-     * Corrigido para somar o histórico real e evitar duplicidade de valores.
+     * Processa o Pagamento (Blindado contra duplicidade e erro de saldo de estornos)
      */
     public function processPayment(Request $request, $reservaId)
     {
@@ -375,11 +394,17 @@ class PaymentController extends Controller
                     throw new \Exception('DUPLICATE_PAYMENT');
                 }
 
-                // 🛡️ CORREÇÃO 2: SOMA GLOBAL LÍQUIDA (AQUI ESTAVA O ERRO)
-                // Somamos TODOS os registros da reserva (pagamentos e estornos) indiferente da data.
-                // Isso garante que (+50 pix) e (-50 estorno) resultem em 0 de saldo pago.
-                $jaPagoReal = (float) $reservaFresh->transactions()->sum('amount');
+                // 🛡️ CORREÇÃO 2: CÁLCULO DE SALDO LÍQUIDO REAL (VINCULADOS + ÓRFÃOS)
+                // Buscamos transações diretas
+                $diretas = (float) $reservaFresh->transactions()->sum('amount');
 
+                // Buscamos estornos/saídas que foram desvinculados mas pertencem a esta reserva (pelo #ID na descrição)
+                $orfas = (float) FinancialTransaction::whereNull('reserva_id')
+                    ->where('arena_id', $reservaFresh->arena_id)
+                    ->where('description', 'LIKE', "%#{$reservaFresh->id}%")
+                    ->sum('amount');
+
+                $jaPagoReal = round($diretas + $orfas, 2);
                 $newTotalPaid = round($jaPagoReal + $amountReceivedNow, 2);
 
                 // ✅ Verificação de duplicidade lógica
@@ -387,10 +412,10 @@ class PaymentController extends Controller
                     throw new \Exception('ALREADY_PAID');
                 }
 
-                // Segurança contra pagar mais que o total (tolerância de 5 centavos)
+                // Segurança contra pagar mais que o total (tolerância de 0.05)
                 if ($newTotalPaid > ($finalPrice + 0.05)) {
-                    $saldoRestante = round($finalPrice - $jaPagoReal, 2);
-                    throw new \Exception("Valor excede o total. O saldo devedor real era: R$ " . number_format($saldoRestante, 2, ',', '.'));
+                    $saldoDevedorReal = round($finalPrice - $jaPagoReal, 2);
+                    throw new \Exception("Valor excede o total. O saldo devedor real era: R$ " . number_format($saldoDevedorReal, 2, ',', '.'));
                 }
 
                 // Define status financeiro e visual da reserva
@@ -399,13 +424,14 @@ class PaymentController extends Controller
                     $newVisualStatus = 'completed';
                 } elseif ($newTotalPaid > 0) {
                     $paymentStatus = 'partial';
+                    // Se estava em manutenção e pagou algo, volta para confirmado
                     $newVisualStatus = ($reservaFresh->status === 'maintenance') ? 'confirmed' : $reservaFresh->status;
                 } else {
                     $paymentStatus = 'unpaid';
                     $newVisualStatus = $reservaFresh->status;
                 }
 
-                // Atualiza a reserva com os valores totais
+                // Atualiza a reserva com os valores totais (Sincroniza o campo total_paid para relatórios rápidos)
                 $reservaFresh->update([
                     'total_paid'     => $newTotalPaid,
                     'final_price'    => $finalPrice,
@@ -507,35 +533,35 @@ class PaymentController extends Controller
                 if ($shouldRefund && $valorParaEstornar > 0) {
                     // 💰 REGISTRA A SAÍDA (ESTORNO) NA DATA OPERACIONAL
                     \App\Models\FinancialTransaction::create([
-                        'reserva_id'     => null,
+                        'reserva_id'     => null, // Desvincula para zerar o saldo da reserva
                         'arena_id'       => $reserva->arena_id,
                         'user_id'        => $reserva->user_id,
                         'manager_id'     => \Auth::id(),
                         'amount'         => -$valorParaEstornar,
                         'type'           => 'refund',
                         'payment_method' => 'cash_out',
-                        'description'    => "SAÍDA (Estorno No-Show) Ref. Reserva #{$reserva->id} | Cliente: {$clienteNome}" . $infoContexto,
+                        // 🎯 PADRONIZAÇÃO: Usando (#ID) para o Controller/View localizarem o estorno
+                        'description'    => "ESTORNO NO-SHOW (#{$reserva->id}): Cliente {$clienteNome}" . $infoContexto,
                         'paid_at'        => $dataOperacional . ' ' . now()->format('H:i:s'),
                     ]);
 
-                    // Anota as transações antigas para auditoria
+                    // Desvincula as transações antigas de entrada para que a reserva fique com saldo 0
                     \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
-                        ->where('type', '!=', 'refund')
                         ->update([
                             'reserva_id'  => null,
-                            'description' => \DB::raw("CONCAT(description, ' (No-Show c/ Estorno em " . date('d/m') . ")')")
+                            'description' => \DB::raw("CONCAT(description, ' (Falta c/ Estorno #{$reserva->id})')")
                         ]);
                 } else {
-                    // 🔒 RETENÇÃO (Multa): O dinheiro fica no caixa, vira "Multa" e desvincula da reserva
+                    // 🔒 RETENÇÃO (Multa): O dinheiro fica no caixa, mas desvincula da reserva
                     \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
                         ->update([
                             'reserva_id'     => null,
                             'type'           => 'no_show_penalty',
                             'payment_method' => 'retained_funds',
-                            'description'    => \DB::raw("CONCAT(description, ' [RETIDO COMO MULTA EM " . date('d/m') . " - Reserva #{$reserva->id}]')")
+                            'description'    => \DB::raw("CONCAT(description, ' [RETIDO COMO MULTA - Reserva #{$reserva->id}]')")
                         ]);
 
-                    // Log informativo no extrato do dia
+                    // Log informativo no extrato do dia (opcional, valor 0 apenas para histórico)
                     \App\Models\FinancialTransaction::create([
                         'reserva_id'     => null,
                         'arena_id'       => $reserva->arena_id,
@@ -543,7 +569,7 @@ class PaymentController extends Controller
                         'amount'         => 0,
                         'type'           => 'no_show_penalty',
                         'payment_method' => 'retained_funds',
-                        'description'    => "LOG: Falta marcada. Valor de R$ {$totalOriginalPago} (Ref #{$reserva->id}) retido como multa.",
+                        'description'    => "LOG: Falta marcada (#{$reserva->id}). R$ {$totalOriginalPago} retido como multa.",
                         'paid_at'        => $dataOperacional . ' ' . now()->format('H:i:s'),
                     ]);
                 }
@@ -563,7 +589,7 @@ class PaymentController extends Controller
                 app(\App\Http\Controllers\ReservaController::class)->recreateFixedSlot($reserva);
             }
 
-            // 🚀 A MUDANÇA CHAVE: Atualizamos o status para 'no_show' em vez de deletar
+            // 🚀 ATUALIZAÇÃO FINAL: Reserva vira No-Show e limpa valores financeiros internos
             $reserva->update([
                 'status' => 'no_show',
                 'managed_by' => \Auth::id(),
