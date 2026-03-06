@@ -426,29 +426,10 @@ class AdminController extends Controller
 
     /**
      * Atualiza o preço de uma reserva específica ou de toda a série (PATCH).
-     * Ajustado para sincronizar price e final_price para o Caixa e validar autorização de supervisor.
+     * Ajustado para sincronizar price e final_price para o Caixa.
      */
     public function updatePrice(Request $request, Reserva $reserva)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Alteração de valores exige autorização de um supervisor.'
-                ], 403);
-            }
-
-            \Log::info("Alteração de preço autorizada por: {$supervisor->email} para o colaborador: " . auth()->user()->email);
-        }
-
-        // --- VALIDAÇÃO DOS DADOS ---
         $validated = $request->validate([
             'new_price'     => 'required|numeric|min:0',
             'justification' => 'required|string|min:5',
@@ -566,34 +547,8 @@ class AdminController extends Controller
      * ✅ CORRIGIDO: Cancela uma reserva PONTUAL confirmada - DELEGADO.
      * Delega a manipulação de status e transações financeiras.
      */
-    /**
-     * ✅ CORRIGIDO: Cancela uma reserva PONTUAL confirmada - DELEGADO.
-     * Inclui trava de segurança para autorização de supervisor caso o usuário seja colaborador.
-     */
     public function cancelarReserva(Request $request, Reserva $reserva)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            // Verifica se o e-mail do supervisor foi enviado e se ele tem permissão
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Credenciais de supervisor inválidas ou não informadas.'
-                ], 403);
-            }
-
-            // Log para auditoria: registra quem autorizou a ação do colaborador
-            \Log::info("Cancelamento autorizado por: {$supervisor->email} para a ação do colaborador: " . auth()->user()->email);
-        }
-
-        // --- LÓGICA ORIGINAL PRESERVADA ---
-
         if ($reserva->is_recurrent) {
             return response()->json(['success' => false, 'message' => 'Use as rotas de cancelamento de série para reservas recorrentes.'], 400);
         }
@@ -601,7 +556,7 @@ class AdminController extends Controller
         // 🚩 AJUSTE: Permite cancelar tanto as Confirmadas quanto as já Pagas (Completed)
         $statusPermitidos = [
             Reserva::STATUS_CONFIRMADA,
-            Reserva::STATUS_CONCLUIDA,
+            Reserva::STATUS_CONCLUIDA, // Caso sua model tenha essa constante
             'completed',
             'concluida'
         ];
@@ -629,7 +584,7 @@ class AdminController extends Controller
             );
 
             DB::commit();
-            $message = "Reserva cancelada com sucesso! O horário foi liberado." . ($result['message_finance'] ?? '');
+            $message = "Reserva cancelada com sucesso! O horário foi liberado." . $result['message_finance'];
             return response()->json(['success' => true, 'message' => $message], 200);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -969,28 +924,9 @@ class AdminController extends Controller
     /**
      * 🛠️ Move para MANUTENÇÃO com Fila de Crédito Inteligente
      * Protege valores já pagos e sincroniza estornos com o novo motor financeiro.
-     * Inclui trava de segurança para autorização de supervisor caso o usuário seja colaborador.
      */
     public function moverManutencao(Request $request, $id)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Mover reserva para manutenção exige autorização de um supervisor.'
-                ], 403);
-            }
-
-            \Log::info("Manutenção autorizada por: {$supervisor->email} para o colaborador: " . auth()->user()->email);
-        }
-
         return DB::transaction(function () use ($request, $id) {
             try {
                 // 📝 DEBUG 1: Início do processo
@@ -1070,6 +1006,7 @@ class AdminController extends Controller
                 if ($valorOriginal > 0 && ($action === 'refund' || !$transferenciaSucesso)) {
                     \Log::info("Iniciando criação da transação de ESTORNO (Refund)...");
 
+                    // 💡 AJUSTE: Garante que o estorno caia na data da reserva
                     $dataOperacional = $reserva->date instanceof \DateTime
                         ? $reserva->date->format('Y-m-d')
                         : date('Y-m-d', strtotime($reserva->date));
@@ -1083,6 +1020,7 @@ class AdminController extends Controller
                             'amount'         => -$valorOriginal,
                             'type'           => FinancialTransaction::TYPE_REFUND,
                             'payment_method' => 'cash_out',
+                            // 🎯 CHAVE DO SUCESSO: Descrição tagueada com (#ID)
                             'description'    => "ESTORNO AUTOMÁTICO (Manutenção #{$reserva->id}): " . $motivo,
                             'paid_at'        => $dataOperacional . ' ' . now()->format('H:i:s'),
                         ]);
@@ -1183,7 +1121,7 @@ class AdminController extends Controller
                         $dataDestino   = $dados['dest_date'] ?? null;
 
                         // 🧠 AJUSTE DE INTEGRIDADE:
-                        // Como o estorno foi registrado no caixa (R$ -50), a reserva
+                        // Como o estorno foi registrado no caixa (R$ -50), a reserva 
                         // DEVE ser resetada para o estado inicial de cobrança.
                         $reserva->update([
                             'client_name'    => $nomeCliente,

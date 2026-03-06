@@ -1362,29 +1362,11 @@ class ReservaController extends Controller
 
 
     /**
-     * ❌ Registra a falta do cliente (No-Show).
-     * Inclui trava de segurança para colaboradores e validação de caixa por arena.
+     * NOVO MÉTODO: Marca uma reserva como Falta (No-Show) e gerencia o estorno/retenção.
+     * (Este método é o endpoint original, mas delega o trabalho centralizado a finalizeStatus)
      */
     public function no_show(Request $request, Reserva $reserva)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Registrar falta com estorno/retenção exige autorização de um supervisor.'
-                ], 403);
-            }
-
-            \Log::info("No-Show autorizado por: {$supervisor->email} para o colaborador: " . auth()->user()->email);
-        }
-
         // 1. Validação de Dados
         $validated = $request->validate([
             'no_show_reason' => 'required|string|min:5|max:255',
@@ -1398,15 +1380,17 @@ class ReservaController extends Controller
 
         // 🎯 VALIDAÇÃO DE SEGURANÇA AJUSTADA: CAIXA FECHADO POR ARENA
         $financeiroController = app(FinanceiroController::class);
-        $reservaDate = \Carbon\Carbon::parse($reserva->date)->toDateString();
+        $reservaDate = Carbon::parse($reserva->date)->toDateString();
 
-        // ✅ CORREÇÃO: Passamos o arena_id da reserva para validar apenas esta quadra
+        // ✅ CORREÇÃO: Passamos o arena_id da reserva.
+        // Se o Vôlei estiver aberto e o Futebol fechado, esta verificação agora permite o No-Show no Vôlei.
         if ($financeiroController->isCashClosed($reservaDate, $reserva->arena_id)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro: Não é possível registrar a falta/estorno. O caixa desta quadra específica para o dia ' . \Carbon\Carbon::parse($reservaDate)->format('d/m/Y') . ' está fechado.'
+                'message' => 'Erro: Não é possível registrar a falta/estorno. O caixa desta quadra específica para o dia ' . Carbon::parse($reservaDate)->format('d/m/Y') . ' está fechado.'
             ], 403);
         }
+        // FIM DA VALIDAÇÃO DE SEGURANÇA
 
         if ($reserva->status === Reserva::STATUS_NO_SHOW) {
             return response()->json(['success' => false, 'message' => 'Esta reserva já foi marcada como falta.'], 400);
@@ -1415,7 +1399,8 @@ class ReservaController extends Controller
         DB::beginTransaction();
         try {
             // Delega a lógica centralizada para finalizeStatus.
-            // O finalizeStatus cuidará da reputação (no_show_count) e da recriação do slot livre.
+            // Como o finalizeStatus usa FinancialTransaction::create, os ajustes que fizemos
+            // no boot do Model garantirão que a transação de estorno ou retenção seja aceita.
             $result = $this->finalizeStatus(
                 $reserva,
                 Reserva::STATUS_NO_SHOW,
@@ -1426,13 +1411,14 @@ class ReservaController extends Controller
 
             DB::commit();
 
-            $message = "Reserva ID {$reserva->id} marcada como FALTA. " . ($result['message_finance'] ?? '');
+            $message = "Reserva ID {$reserva->id} marcada como FALTA. " . $result['message_finance'];
             return response()->json(['success' => true, 'message' => $message], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             $logMessage = "Erro fatal ao marcar falta (No-Show) ID: {$reserva->id}: " . $e->getMessage();
-            \Log::error($logMessage, ['exception' => $e]);
+            Log::error($logMessage, ['exception' => $e]);
 
+            // Se o erro vier do bloqueio do Model, ele será capturado aqui
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao registrar a falta: ' . $e->getMessage()

@@ -426,29 +426,10 @@ class AdminController extends Controller
 
     /**
      * Atualiza o preço de uma reserva específica ou de toda a série (PATCH).
-     * Ajustado para sincronizar price e final_price para o Caixa e validar autorização de supervisor.
+     * Ajustado para sincronizar price e final_price para o Caixa.
      */
     public function updatePrice(Request $request, Reserva $reserva)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Alteração de valores exige autorização de um supervisor.'
-                ], 403);
-            }
-
-            \Log::info("Alteração de preço autorizada por: {$supervisor->email} para o colaborador: " . auth()->user()->email);
-        }
-
-        // --- VALIDAÇÃO DOS DADOS ---
         $validated = $request->validate([
             'new_price'     => 'required|numeric|min:0',
             'justification' => 'required|string|min:5',
@@ -969,28 +950,9 @@ class AdminController extends Controller
     /**
      * 🛠️ Move para MANUTENÇÃO com Fila de Crédito Inteligente
      * Protege valores já pagos e sincroniza estornos com o novo motor financeiro.
-     * Inclui trava de segurança para autorização de supervisor caso o usuário seja colaborador.
      */
     public function moverManutencao(Request $request, $id)
     {
-        // 🛡️ TRAVA DE SEGURANÇA: Validação de Supervisor para Colaboradores
-        if (auth()->user()->role === 'colaborador') {
-            $supervisorEmail = $request->input('supervisor_token');
-
-            $supervisor = \App\Models\User::where('email', $supervisorEmail)
-                ->whereIn('role', ['admin', 'gestor'])
-                ->first();
-
-            if (!$supervisor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '🛑 Ação não autorizada. Mover reserva para manutenção exige autorização de um supervisor.'
-                ], 403);
-            }
-
-            \Log::info("Manutenção autorizada por: {$supervisor->email} para o colaborador: " . auth()->user()->email);
-        }
-
         return DB::transaction(function () use ($request, $id) {
             try {
                 // 📝 DEBUG 1: Início do processo
@@ -1070,6 +1032,7 @@ class AdminController extends Controller
                 if ($valorOriginal > 0 && ($action === 'refund' || !$transferenciaSucesso)) {
                     \Log::info("Iniciando criação da transação de ESTORNO (Refund)...");
 
+                    // 💡 AJUSTE: Garante que o estorno caia na data da reserva
                     $dataOperacional = $reserva->date instanceof \DateTime
                         ? $reserva->date->format('Y-m-d')
                         : date('Y-m-d', strtotime($reserva->date));
@@ -1083,6 +1046,7 @@ class AdminController extends Controller
                             'amount'         => -$valorOriginal,
                             'type'           => FinancialTransaction::TYPE_REFUND,
                             'payment_method' => 'cash_out',
+                            // 🎯 CHAVE DO SUCESSO: Descrição tagueada com (#ID)
                             'description'    => "ESTORNO AUTOMÁTICO (Manutenção #{$reserva->id}): " . $motivo,
                             'paid_at'        => $dataOperacional . ' ' . now()->format('H:i:s'),
                         ]);

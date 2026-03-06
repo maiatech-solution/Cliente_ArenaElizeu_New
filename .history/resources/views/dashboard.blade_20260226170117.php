@@ -1533,8 +1533,7 @@
                 }, 300);
             }
 
-            // ✅ ADICIONADO: Parâmetro supervisorToken para auditoria e segurança
-            async function sendCancellationRequest(reservaId, method, urlBase, reason, supervisorToken = null) {
+            async function sendCancellationRequest(reservaId, method, urlBase, reason) {
                 const url = urlBase.replace(':id', reservaId);
                 const refundChoice = document.querySelector('input[name="refund_choice"]:checked');
                 const paidAmountRef = document.getElementById('cancellation-paid-amount-ref')?.value || 0;
@@ -1543,7 +1542,6 @@
                     cancellation_reason: reason,
                     should_refund: refundChoice ? refundChoice.value === 'refund' : false,
                     paid_amount_ref: paidAmountRef,
-                    supervisor_token: supervisorToken, // ⬅️ IMPORTANTE: Envia a autorização do Gestor
                     _token: csrfToken,
                     _method: method,
                 };
@@ -1573,7 +1571,8 @@
                         showDashboardMessage(result.message, 'success');
                         if (calendar) calendar.refetchEvents();
                     } else {
-                        // 2. ERRO (Ex: Caixa Fechado ou Autorização Inválida)
+                        // 2. ERRO (Ex: Caixa Fechado)
+                        // Sincroniza o calendário para garantir que a reserva NÃO suma
                         if (calendar) calendar.refetchEvents();
                         showDashboardMessage(result.message || "Erro ao cancelar reserva.", 'error');
                     }
@@ -1684,97 +1683,99 @@
             document.getElementById('no-show-form').addEventListener('submit', async function(e) {
                 e.preventDefault();
 
-                // 1. Captura de elementos e valores (Igual ao seu)
+                // 1. Captura de elementos e valores
                 const reasonInput = document.getElementById('no-show-reason-input');
                 const reason = reasonInput.value.trim();
                 const reasonErrorSpan = document.getElementById('no-show-reason-error-span');
+
+                // Valor pago (referência vinda do campo oculto)
                 const paidAmountRef = document.getElementById('paid-amount-ref');
                 const paidAmount = parseFloat(paidAmountRef ? paidAmountRef.value : 0) || 0;
+
+                // Decisão de estorno
                 const shouldRefund = document.getElementById('should_refund_no_show').value === 'true';
                 const refundAmountInput = document.getElementById('custom_no_show_refund_amount');
                 const refundAmount = parseFloat(refundAmountInput.value) || 0;
                 const valueErrorSpan = document.getElementById('no-show-error-span');
 
-                // 2. Reset de estados de erro (Igual ao seu)
+                // 2. Reset de estados de erro
                 reasonErrorSpan.classList.add('hidden');
                 reasonInput.classList.remove('border-red-600', 'bg-red-50');
                 valueErrorSpan.classList.add('hidden');
                 refundAmountInput.classList.remove('border-red-600', 'bg-red-50');
 
-                // 🛡️ TRAVAS DE VALIDAÇÃO (Motivo e Valor)
+                // 🛡️ TRAVA 1: Motivo (Mínimo 5 caracteres)
                 if (reason.length < 5) {
                     reasonInput.focus();
                     reasonInput.classList.add('border-red-600', 'bg-red-50');
                     reasonErrorSpan.classList.remove('hidden');
                     return;
                 }
+
+                // 🛡️ TRAVA 2: Valor do Estorno (Não pode ser maior que o pago)
                 if (shouldRefund && refundAmount > paidAmount) {
                     refundAmountInput.focus();
                     refundAmountInput.classList.add('border-red-600', 'bg-red-50', 'animate-pulse');
                     valueErrorSpan.classList.remove('hidden');
+                    setTimeout(() => refundAmountInput.classList.remove('animate-pulse'), 500);
                     return;
                 }
 
-                // 🔐 3. INTERCEPTAÇÃO: Pede autorização do Gestor
-                requisitarAutorizacao(async (supervisorEmail = null) => {
-                    const reservaId = document.getElementById('no-show-reserva-id').value;
-                    const url = NO_SHOW_URL.replace(':id', reservaId);
-                    const submitBtn = document.getElementById('confirm-no-show-btn');
+                const reservaId = document.getElementById('no-show-reserva-id').value;
+                const url = NO_SHOW_URL.replace(':id', reservaId);
+                const submitBtn = document.getElementById('confirm-no-show-btn');
 
-                    // Preparação dos dados incluindo o token de quem autorizou
-                    const bodyData = {
-                        _token: csrfToken,
-                        no_show_reason: reason,
-                        notes: reason,
-                        should_refund: shouldRefund,
-                        refund_amount: refundAmount,
-                        paid_amount: paidAmount,
-                        supervisor_token: supervisorEmail // ⬅️ Envia o e-mail do gestor
-                    };
+                // 3. Preparação dos dados - REMOVIDO O _method PATCH
+                // Sua rota no web.php é: Route::post('/{reserva}/no-show'...)
+                const bodyData = {
+                    _token: csrfToken,
+                    no_show_reason: reason,
+                    notes: reason,
+                    should_refund: shouldRefund,
+                    refund_amount: refundAmount,
+                    paid_amount: paidAmount
+                };
 
-                    // 4. Estado de carregamento
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = 'Processando...';
+                // 4. Estado de carregamento
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Processando...';
 
-                    try {
-                        const response = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json',
-                            },
-                            body: JSON.stringify(bodyData)
-                        });
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST', // 🚀 POST puro para bater com a rota do web.php
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify(bodyData)
+                    });
 
-                        const result = await response.json();
+                    const result = await response.json();
 
-                        if (response.ok && result.success) {
-                            closeNoShowModal();
-                            showDashboardMessage(result.message || "Falta registrada com sucesso.",
-                                'success');
-                            if (window.calendar) window.calendar.refetchEvents();
-                        } else {
-                            showDashboardMessage(result.message || "Erro ao processar falta.", 'error');
-                            if (window.calendar) window.calendar.refetchEvents();
-                        }
-                    } catch (error) {
-                        console.error('Erro de Rede:', error);
-                        showDashboardMessage("Erro de conexão com o servidor.", 'error');
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = 'Confirmar Falta';
+                    if (response.ok && result.success) {
+                        closeNoShowModal();
+                        showDashboardMessage(result.message || "Falta registrada com sucesso.", 'success');
+                        if (window.calendar) window.calendar.refetchEvents();
+                    } else {
+                        showDashboardMessage(result.message || "Erro ao processar falta.", 'error');
+                        if (window.calendar) window.calendar.refetchEvents();
                     }
-                });
+                } catch (error) {
+                    console.error('Erro de Rede:', error);
+                    showDashboardMessage("Erro de conexão com o servidor.", 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Confirmar Falta';
+                }
             });
 
-            // ✅ AJUSTADO: Event Listener com Trava de Autorização para Cancelamento
+            // ✅ NOVO: Event Listener para o botão de Confirmação de Cancelamento
             document.getElementById('confirm-cancellation-btn').addEventListener('click', async function() {
                 const reasonInput = document.getElementById('cancellation-reason-input');
                 const reason = reasonInput.value.trim();
 
-                // 1. Validação básica de preenchimento (continua igual)
                 if (reason.length < 5) {
                     showDashboardMessage("Por favor, forneça o motivo do cancelamento com pelo menos 5 caracteres.",
                         'warning');
@@ -1782,19 +1783,8 @@
                 }
 
                 if (currentReservaId && currentMethod && currentUrlBase) {
-
-                    // 🔐 2. INTERCEPTAÇÃO: Pede autorização se for colaborador
-                    requisitarAutorizacao(async (supervisorEmail = null) => {
-                        // Esta parte só executa se o supervisor digitar a senha correta
-                        // ou se o usuário logado já for Gestor/Admin.
-
-                        console.log("Ação autorizada por:", supervisorEmail || "Usuário Master");
-
-                        // Passamos o email do supervisor para a função de envio
-                        await sendCancellationRequest(currentReservaId, currentMethod, currentUrlBase,
-                            reason, supervisorEmail);
-                    });
-
+                    // ✅ CHAMADA AGORA ENVIARÁ O VALOR PAGO/SINAL PARA O BACKEND
+                    await sendCancellationRequest(currentReservaId, currentMethod, currentUrlBase, reason);
                 } else {
                     console.error("Dados de cancelamento (ID, Método ou URL) não encontrados.");
                     showDashboardMessage("Erro interno: Dados da reserva para cancelamento perdidos.", 'error');
@@ -1847,67 +1837,70 @@
             }
 
             async function handleRenewal(masterReservaId) {
-                // 🎯 1. BLOQUEIO PREVENTIVO OTIMIZADO (Caixa)
+                // 🎯 1. BLOQUEIO PREVENTIVO OTIMIZADO
+                // Reutiliza a função global: verifica status, avisa o usuário e trava o calendário se necessário
                 const aberto = await isCashierOpen(moment().format('YYYY-MM-DD'));
-                if (!aberto) return;
+                if (!aberto) return; // 🛑 Cancela a operação se o caixa estiver fechado
 
-                // 🔐 2. INTERCEPTAÇÃO: Pede autorização do Gestor antes de processar
-                requisitarAutorizacao(async (supervisorEmail = null) => {
+                const url = RENEW_SERIE_URL.replace(':masterReserva', masterReservaId);
+                const button = document.querySelector(`.renew-btn-${masterReservaId}`);
 
-                    const url = RENEW_SERIE_URL.replace(':masterReserva', masterReservaId);
-                    const button = document.querySelector(`.renew-btn-${masterReservaId}`);
+                if (!button) return;
 
-                    if (!button) return;
+                // Estado de carregamento (UI Feedback)
+                const originalText = button.textContent;
+                button.disabled = true;
+                button.textContent = 'Processando...';
 
-                    // Estado de carregamento (UI Feedback)
-                    const originalText = button.textContent;
-                    button.disabled = true;
-                    button.textContent = 'Processando...';
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            _method: 'PATCH' // Laravel reconhece como PATCH através do spoofing
+                        })
+                    });
 
-                    try {
-                        const response = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'Accept': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                _method: 'PATCH',
-                                supervisor_token: supervisorEmail // ⬅️ Envia a autorização do Gestor
-                            })
-                        });
+                    const result = await response.json();
 
-                        const result = await response.json();
+                    if (response.ok && result.success) {
+                        // SUCESSO: Notifica e limpa a lista
+                        showDashboardMessage(result.message || `Série renovada com sucesso!`, 'success');
 
-                        if (response.ok && result.success) {
-                            showDashboardMessage(result.message || `Série renovada com sucesso!`, 'success');
+                        // Remove a série da memória local e atualiza o modal visualmente
+                        globalExpiringSeries = globalExpiringSeries.filter(s => s.master_id !== masterReservaId);
+                        renderRenewalList();
 
-                            globalExpiringSeries = globalExpiringSeries.filter(s => s.master_id !==
-                                masterReservaId);
-                            renderRenewalList();
+                        // Atualiza o calendário para mostrar os novos meses gerados
+                        if (window.calendar) window.calendar.refetchEvents();
 
-                            if (window.calendar) window.calendar.refetchEvents();
-
-                            if (globalExpiringSeries.length === 0) {
-                                setTimeout(() => closeRenewalModal(), 1200);
-                            }
-
-                        } else {
-                            console.error(result.message || `Erro ao renovar série ${masterReservaId}.`);
-                            showDashboardMessage(result.message || `Falha na renovação da série.`, 'error');
-                            if (window.calendar) window.calendar.refetchEvents();
+                        // Se limpou todas as renovações pendentes, fecha o modal após um breve delay
+                        if (globalExpiringSeries.length === 0) {
+                            setTimeout(() => closeRenewalModal(), 1200);
                         }
-                    } catch (error) {
-                        console.error('Erro de Rede na Renovação:', error);
-                        showDashboardMessage("Erro de conexão ao tentar renovar a série.", 'error');
-                    } finally {
-                        if (button && button.parentNode) {
-                            button.disabled = false;
-                            button.textContent = originalText;
-                        }
+
+                    } else {
+                        // ERRO DE REGRA DE NEGÓCIO (Ex: Conflito de horário ou Caixa fechou durante o clique)
+                        console.error(result.message || `Erro ao renovar série ${masterReservaId}.`);
+                        showDashboardMessage(result.message || `Falha na renovação da série.`, 'error');
+
+                        // Sincroniza o calendário para garantir que os dados batem com o servidor
+                        if (window.calendar) window.calendar.refetchEvents();
                     }
-                });
+                } catch (error) {
+                    console.error('Erro de Rede na Renovação:', error);
+                    showDashboardMessage("Erro de conexão ao tentar renovar a série. Verifique sua internet.", 'error');
+                } finally {
+                    // Restaura o estado do botão para o usuário poder tentar novamente se falhou
+                    if (button && button.parentNode) {
+                        button.disabled = false;
+                        button.textContent = originalText;
+                    }
+                }
             }
 
             // =========================================================
@@ -2088,8 +2081,8 @@
             <div class="grid grid-cols-1 gap-2">
                 ${!isFinalized && status !== 'cancelled' ?
                     `<button onclick="openPaymentModal('${reservaId}')" class="w-full px-4 py-3 bg-green-600 text-white font-black rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2">
-                                                                                                                                                                                                                <span>💰 IR PARA O CAIXA</span>
-                                                                                                                                                                                                            </button>` : `<div class="p-2 bg-green-50 border border-green-200 text-green-700 text-center rounded-lg font-bold text-sm">✅ PAGO / FINALIZADA</div>`}
+                                                                                                                                                                                <span>💰 IR PARA O CAIXA</span>
+                                                                                                                                                                            </button>` : `<div class="p-2 bg-green-50 border border-green-200 text-green-700 text-center rounded-lg font-bold text-sm">✅ PAGO / FINALIZADA</div>`}
 
                 <div class="grid grid-cols-2 gap-2 mt-1">
                     <button onclick="cancelarPontual('${reservaId}', ${isRecurrent}, '${paidAmountString}', ${isFinalized})"
@@ -2104,14 +2097,14 @@
 
                 ${!isFinalized && status !== 'no_show' ?
                     `<button onclick="openNoShowModal('${reservaId}', '${clientNameRaw.replace(/'/g, "\\'")}', '${paidAmountString}', ${isFinalized}, '${totalPriceString}')"
-                                                                                                                                                                                                                class="w-full py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-200 shadow-sm hover:bg-red-100 transition uppercase">
-                                                                                                                                                                                                                FALTA (NO-SHOW)
-                                                                                                                                                                                                            </button>` : ''}
+                                                                                                                                                                                class="w-full py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-200 shadow-sm hover:bg-red-100 transition uppercase">
+                                                                                                                                                                                FALTA (NO-SHOW)
+                                                                                                                                                                            </button>` : ''}
 
                 ${isRecurrent ?
                     `<button onclick="cancelarSerie('${reservaId}', '${paidAmountString}', ${isFinalized})" class="w-full mt-1 px-4 py-2 bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-red-800 transition uppercase">
-                                                                                                                                                                                                                CANCELAR SÉRIE
-                                                                                                                                                                                                            </button>` : ''}
+                                                                                                                                                                                CANCELAR SÉRIE
+                                                                                                                                                                            </button>` : ''}
 
                 <button onclick="closeEventModal()" class="w-full mt-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
                     Fechar
