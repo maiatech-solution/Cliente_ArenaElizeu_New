@@ -104,7 +104,7 @@ class BarCashController extends Controller
             $totalEstornado = 0;
         }
 
-       return view('bar.cash.index', compact(
+        return view('bar.cash.index', compact(
             'currentSession',
             'openSession',
             'movements',
@@ -116,7 +116,7 @@ class BarCashController extends Controller
             'totalBruto',
             'totalEstornado',
             'mesasAbertasCount',
-            'caixaVencido' // ⬅️ O nome correto é este, sem o "n" e sem o erro anterior
+            'caixaVecindo'
         ));
     }
 
@@ -245,7 +245,7 @@ class BarCashController extends Controller
     }
 
     /**
-     * Fechar o Caixa com Auditoria (Versão Inteligente: Separa Estorno Físico de Digital)
+     * Fechar o Caixa com Auditoria (Versão Corrigida para considerar Estornos)
      */
     public function close(Request $request)
     {
@@ -293,35 +293,23 @@ class BarCashController extends Controller
                 ->where('status', 'pago')
                 ->sum('total_value');
 
-            // 4. MOVIMENTAÇÕES MANUAIS (Separação por tipo de recurso)
+            // Movimentações manuais (Reforço, Sangria e Estornos)
             $movimentacoes = BarCashMovement::where('bar_cash_session_id', $session->id)->get();
-
             $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
             $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
 
-            // 🛡️ CORREÇÃO CRÍTICA: Diferenciação de Estorno
-            $estornosDinheiro = $movimentacoes->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
-            $estornosDigital = $movimentacoes->where('type', 'estorno')->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])->sum('amount');
+            // 🛡️ CORREÇÃO CRÍTICA: Captura o valor que saiu do caixa como estorno/devolução
+            $estornos = $movimentacoes->where('type', 'estorno')->sum('amount');
 
-            // Total geral estornado (para o faturamento bruto)
-            $totalEstornado = $estornosDinheiro + $estornosDigital;
+            // 🧮 Cálculo do esperado líquido: (Fundo + Vendas + Reforços) - (Sangrias + Estornos)
+            $totalEsperadoSistema = ($session->opening_balance + $vendasMesas + $vendasPDV + $reforcos) - ($sangrias + $estornos);
 
-            // 💰 CÁLCULO DO ESPERADO EM DINHEIRO (Gaveta Física)
-            // Só subtrai da gaveta o que saiu em papel-moeda. Estorno de PIX não mexe aqui!
-            $vendasDinheiro = $movimentacoes->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
-            $dinheiroEsperadoGaveta = ($session->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
-
-            // 📊 CÁLCULO DO FATURAMENTO BRUTO TOTAL (Auditado para o Relatório)
-            $totalEsperadoSistema = ($session->opening_balance + $vendasMesas + $vendasPDV + $reforcos) - ($sangrias + $totalEstornado);
-
-            // ⚖️ AUDITORIA FINAL
-            // O valor que o operador contou deve bater com o dinheiro físico (Gaveta)
             $actual = $request->actual_balance;
-            $difference = $actual - $dinheiroEsperadoGaveta;
+            $difference = $actual - $totalEsperadoSistema;
 
             $session->update([
                 'closing_balance' => $actual,
-                'expected_balance' => $totalEsperadoSistema, // Mantemos o faturamento real da empresa aqui
+                'expected_balance' => $totalEsperadoSistema,
                 'status' => 'closed',
                 'closed_at' => now(),
                 'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento autorizado por: {$supervisor->name}"
@@ -329,7 +317,7 @@ class BarCashController extends Controller
 
             $msg = "Turno encerrado com sucesso!";
 
-            // Verificação de precisão
+            // Verificação de precisão (tolerância de centavos)
             if (abs($difference) < 0.01) {
                 $msg .= " Caixa bateu perfeitamente!";
             } elseif ($difference < 0) {

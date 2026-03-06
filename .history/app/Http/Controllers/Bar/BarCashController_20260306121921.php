@@ -104,7 +104,7 @@ class BarCashController extends Controller
             $totalEstornado = 0;
         }
 
-       return view('bar.cash.index', compact(
+        return view('bar.cash.index', compact(
             'currentSession',
             'openSession',
             'movements',
@@ -116,7 +116,7 @@ class BarCashController extends Controller
             'totalBruto',
             'totalEstornado',
             'mesasAbertasCount',
-            'caixaVencido' // ⬅️ O nome correto é este, sem o "n" e sem o erro anterior
+            'caixaVencindo'
         ));
     }
 
