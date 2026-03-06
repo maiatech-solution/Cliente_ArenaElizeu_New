@@ -23,42 +23,37 @@
             {{-- 📊 DASHBOARD DE FECHAMENTO --}}
             <div class="space-y-4 mb-8">
                 <div class="grid grid-cols-2 gap-4">
-                    {{-- GAVETA (Dinheiro Físico) --}}
+                    {{-- GAVETA --}}
                     <div class="bg-black/40 p-5 rounded-3xl border border-gray-800">
                         <span
-                            class="text-[9px] font-black text-emerald-500 uppercase block mb-1 tracking-widest leading-tight">
-                            Esperado em Espécie<br>(Gaveta Física)
-                        </span>
-                        <span class="text-white font-black text-2xl italic font-mono">
-                            R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}
-                        </span>
+                            class="text-[9px] font-black text-gray-500 uppercase block mb-1 tracking-widest leading-tight">Esperado
+                            em Dinheiro<br>(Gaveta)</span>
+                        <span class="text-white font-black text-2xl italic">R$
+                            {{ number_format($openSession->expected_balance ?? 0, 2, ',', '.') }}</span>
                     </div>
-
-                    {{-- DIGITAL (PIX e Cartões) --}}
+                    {{-- DIGITAL --}}
                     <div class="bg-black/40 p-5 rounded-3xl border border-gray-800">
                         <span
-                            class="text-[9px] font-black text-cyan-400 uppercase block mb-1 tracking-widest leading-tight">
-                            Faturamento Digital<br>(PIX/Cartões)
-                        </span>
-                        <span class="text-blue-400 font-black text-2xl italic font-mono">
-                            R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
-                        </span>
+                            class="text-[9px] font-black text-gray-500 uppercase block mb-1 tracking-widest leading-tight">Faturamento
+                            Digital<br>(PIX/Cartões)</span>
+                        <span class="text-blue-400 font-black text-2xl italic">R$
+                            {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}</span>
                     </div>
                 </div>
 
-                {{-- BRUTO TOTAL (Vendas Líquidas da Sessão) --}}
+                {{-- BRUTO TOTAL --}}
                 <div
-                    class="bg-orange-600/10 p-5 rounded-3xl border border-orange-600/20 flex justify-between items-center px-8 shadow-inner">
+                    class="bg-orange-600/10 p-5 rounded-3xl border border-orange-600/20 flex justify-between items-center px-8">
                     <div>
-                        <span class="text-[10px] font-black text-orange-500 uppercase block tracking-[0.2em]">
-                            Faturamento Líquido Total
-                        </span>
-                        <p class="text-[8px] text-gray-500 font-bold uppercase italic mt-1">
-                            (Total de vendas realizadas nesta sessão)
-                        </p>
+                        <span
+                            class="text-[10px] font-black text-orange-500 uppercase block tracking-[0.2em]">Faturamento
+                            Bruto Total</span>
+                        <p class="text-[8px] text-gray-500 font-bold uppercase italic mt-1">(Total vendido sem o fundo
+                            de reserva)</p>
                     </div>
-                    <span class="text-green-500 font-black text-4xl italic tracking-tighter font-mono">
-                        R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
+                    <span class="text-green-500 font-black text-4xl italic tracking-tighter">
+                        R$
+                        {{ number_format(($openSession->expected_balance ?? 0) + ($faturamentoDigital ?? 0) - ($openSession->opening_balance ?? 0), 2, ',', '.') }}
                     </span>
                 </div>
             </div>
@@ -75,7 +70,7 @@
                     {{-- VALOR CONTADO --}}
                     <div>
                         <label class="text-gray-500 uppercase text-[10px] font-black ml-2 mb-2 block tracking-widest">
-                            Valor total em caixa (Dinheiro + Digital)
+                            Contagem Real na Gaveta
                         </label>
                         <input type="number" name="actual_balance" id="actual_balance_input" step="0.01"
                             min="0" required placeholder="0,00" oninput="calcularDiferenca()"
@@ -158,42 +153,40 @@
 
 
     /**
+     * 📊 CÁLCULO DE QUEBRA/SOBRA (Soma Dinheiro + Digital)
+     */
+    /**
      * 📊 CÁLCULO DE QUEBRA/SOBRA (Gaveta Física)
      * Compara o valor contado apenas com o que deve existir em espécie.
      */
     function calcularDiferenca() {
-        // 🎯 O AJUSTE DE MESTRE:
-        // Somamos o Faturamento Líquido ($totalBruto) com o Fundo de Abertura.
-        const faturamentoTurno = {{ $totalBruto ?? 0 }};
-        const fundoAbertura = {{ $currentSession->opening_balance ?? 0 }};
-        const totalEsperadoSistema = faturamentoTurno + fundoAbertura;
+        // 🛡️ O "Pulo do Gato": Usamos apenas o saldo que deve estar na gaveta física
+        const esperadoEmEspecie = {{ $dinheiroGeral ?? 0 }};
 
         const input = document.getElementById('actual_balance_input');
         const contado = parseFloat(input.value) || 0;
+
         const display = document.getElementById('msg_diferenca');
 
-        // Se o campo estiver vazio ou zero
-        if (input.value === "" || input.value === "0") {
-            display.innerText = "DIGITE O TOTAL: VENDAS + TROCO (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
-                minimumFractionDigits: 2
-            }) + ")";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-orange-500 animate-pulse";
+        // Se o campo estiver vazio, limpa a mensagem
+        if (input.value === "") {
+            display.innerText = "";
             return;
         }
 
-        // Diferença contra o total absoluto (Vendas + Fundo)
-        const diferenca = contado - totalEsperadoSistema;
+        const diferenca = contado - esperadoEmEspecie;
 
         if (Math.abs(diferenca) < 0.01) {
-            display.innerText = "✅ VALOR TOTAL CONFERIDO";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-green-500 font-bold";
+            display.innerText = "✅ VALOR EXATO NA GAVETA";
+            display.className = "text-[10px] font-black uppercase tracking-widest text-green-500";
         } else if (diferenca > 0) {
-            display.innerText = "➕ SOBRA GERAL: R$ " + diferenca.toLocaleString('pt-br', {
+            display.innerText = "➕ SOBRA NA GAVETA: R$ " + diferenca.toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-blue-400";
         } else {
-            display.innerText = "⚠️ FALTA NO TOTAL: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
+            // Se o contado for menor que o esperado em espécie
+            display.innerText = "⚠️ QUEBRA NA GAVETA: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-red-500";

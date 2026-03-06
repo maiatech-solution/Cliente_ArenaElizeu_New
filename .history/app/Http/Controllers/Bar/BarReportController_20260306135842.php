@@ -142,7 +142,7 @@ class BarReportController extends Controller
     }
 
     /**
-     * AUDITORIA DE FECHAMENTO DE CAIXA (Sincronizada com Fluxo de Caixa)
+     * AUDITORIA DE FECHAMENTO DE CAIXA (VERSÃO BLINDADA MULTI-CAIXA)
      */
     public function cashier(Request $request)
     {
@@ -156,28 +156,28 @@ class BarReportController extends Controller
             ->get();
 
         foreach ($sessoes as $sessao) {
-            // 🎯 A FONTE ÚNICA DA VERDADE: Movimentações financeiras da sessão
+            // 1. Soma Mesas e PDV vinculadas EXCLUSIVAMENTE a esta sessão
+            $vendasMesas = \App\Models\Bar\BarOrder::whereIn('status', ['paid', 'pago'])
+                ->where('bar_cash_session_id', $sessao->id)
+                ->sum('total_value');
+
+            $vendasPDV = \App\Models\Bar\BarSale::whereIn('status', ['paid', 'pago'])
+                ->where('bar_cash_session_id', $sessao->id)
+                ->sum('total_value');
+
+            // 2. Movimentações Manuais (Sangria/Reforço/Estorno)
             $movimentacoes = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $sessao->id)->get();
 
-            // 1. Somatória de Vendas Brutas (Registradas como 'venda' no fluxo)
-            $vendasBrutasTotal = $movimentacoes->where('type', 'venda')->sum('amount');
-
-            // 2. Somatória de Estornos (O que anula a venda)
-            $totalEstornado = $movimentacoes->where('type', 'estorno')->sum('amount');
-
-            // 3. Reforços e Sangrias
             $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
             $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
+            $estornos = $movimentacoes->where('type', 'estorno')->sum('amount');
 
-            // 4. Resultado para a Tabela de Auditoria
+            // 3. Resultado Final Unificado (Líquido)
+            // Vendas Turno é o Bruto. O Esperado remove Sangrias e Estornos.
+            $sessao->vendas_turno = ($vendasMesas + $vendasPDV);
 
-            // "Vendas do Turno" agora mostra o Líquido Real (Vendas - Estornos)
-            // Isso fará com que o valor na coluna "Vendas" bata com o que o usuário viu no dashboard
-            $sessao->vendas_turno = $vendasBrutasTotal - $totalEstornado;
-
-            // 📊 FÓRMULA MESTRA (Idêntica ao Controller de Fechamento)
-            // Total Esperado = (Fundo Inicial + Vendas Brutas + Reforços) - (Sangrias + Estornos)
-            $sessao->total_sistema_esperado = ($sessao->opening_balance + $vendasBrutasTotal + $reforcos) - ($sangrias + $totalEstornado);
+            // 🎯 FÓRMULA MESTRA: (Abertura + Vendas + Reforços) - (Sangrias + Estornos)
+            $sessao->total_sistema_esperado = ($sessao->opening_balance + $sessao->vendas_turno + $reforcos) - ($sangrias + $estornos);
         }
 
         return view('bar.reports.cashier', compact('sessoes', 'mesReferencia'));

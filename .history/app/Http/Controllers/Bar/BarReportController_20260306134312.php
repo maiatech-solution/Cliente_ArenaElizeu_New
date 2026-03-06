@@ -29,57 +29,40 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 🛡️ LÓGICA DE PRIVACIDADE:
-        // Se for Admin ou Gestor, vê o faturamento total da Arena.
-        // Se for Colaborador, vê apenas o que ele vendeu no mês.
-        $user = auth()->user();
-        $isAdmin = in_array($user->role, ['admin', 'gestor']);
+        // 1. Faturamento Consolidado (Aceitando 'paid' e 'pago')
+        $faturamentoMesas = BarOrder::whereIn('status', ['paid', 'pago'])
+            ->whereBetween('updated_at', [$startDate, $endDate])
+            ->sum('total_value');
 
-        // 1. Faturamento Consolidado
-        $queryMesas = BarOrder::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('updated_at', [$startDate, $endDate]);
+        $faturamentoPDV = BarSale::whereIn('status', ['paid', 'pago'])
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->sum('total_value');
 
-        $queryPDV = BarSale::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('created_at', [$startDate, $endDate]);
-
-        // Se NÃO for admin, filtra pelo ID do usuário logado
-        if (!$isAdmin) {
-            $queryMesas->where('user_id', $user->id);
-            $queryPDV->where('user_id', $user->id);
-        }
-
-        $faturamentoMesas = $queryMesas->sum('total_value');
-        $faturamentoPDV = $queryPDV->sum('total_value');
         $faturamentoMensal = $faturamentoMesas + $faturamentoPDV;
 
-        // 2. Itens Vendidos (Com Filtro de Usuário)
-        $itensMesas = BarOrderItem::whereHas('order', function ($q) use ($startDate, $endDate, $isAdmin, $user) {
+        // 2. Itens Vendidos (Corrigido Status)
+        $itensMesas = BarOrderItem::whereHas('order', function ($q) use ($startDate, $endDate) {
             $q->whereIn('status', ['paid', 'pago'])
                 ->whereBetween('updated_at', [$startDate, $endDate]);
-            if (!$isAdmin) $q->where('user_id', $user->id);
         })->sum('quantity');
 
-        $itensPDV = BarSaleItem::whereHas('sale', function ($q) use ($startDate, $endDate, $isAdmin, $user) {
+        $itensPDV = BarSaleItem::whereHas('sale', function ($q) use ($startDate, $endDate) {
             $q->whereIn('status', ['paid', 'pago'])
                 ->whereBetween('created_at', [$startDate, $endDate]);
-            if (!$isAdmin) $q->where('user_id', $user->id);
         })->sum('quantity');
 
         $totalItensMes = $itensMesas + $itensPDV;
 
-        // 3. Ticket Médio (Filtrado)
-        $countMesas = (clone $queryMesas)->count();
-        $countPDV = (clone $queryPDV)->count();
-        $transacoes = $countMesas + $countPDV;
+        // 3. Ticket Médio
+        $transacoes = BarOrder::whereIn('status', ['paid', 'pago'])->whereBetween('updated_at', [$startDate, $endDate])->count() +
+            BarSale::whereIn('status', ['paid', 'pago'])->whereBetween('created_at', [$startDate, $endDate])->count();
 
         $ticketMedio = $transacoes > 0 ? $faturamentoMensal / $transacoes : 0;
 
-        // 4. Sangrias (Apenas as que o usuário fez, se não for admin)
-        $querySangria = BarCashMovement::where('type', 'sangria')
-            ->whereBetween('created_at', [$startDate, $endDate]);
-        if (!$isAdmin) $querySangria->where('user_id', $user->id);
-
-        $totalSangriasMes = $querySangria->sum('amount');
+        // 4. Sangrias
+        $totalSangriasMes = BarCashMovement::where('type', 'sangria')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->sum('amount');
 
         return view('bar.reports.index', compact('faturamentoMensal', 'totalItensMes', 'ticketMedio', 'totalSangriasMes', 'mesReferencia'));
     }
@@ -142,7 +125,7 @@ class BarReportController extends Controller
     }
 
     /**
-     * AUDITORIA DE FECHAMENTO DE CAIXA (Sincronizada com Fluxo de Caixa)
+     * AUDITORIA DE FECHAMENTO DE CAIXA (VERSÃO BLINDADA MULTI-CAIXA)
      */
     public function cashier(Request $request)
     {
@@ -156,28 +139,30 @@ class BarReportController extends Controller
             ->get();
 
         foreach ($sessoes as $sessao) {
-            // 🎯 A FONTE ÚNICA DA VERDADE: Movimentações financeiras da sessão
+
+            // 🎯 O SEGREDO: Removemos o orWhereBetween.
+            // Agora o relatório só soma o que foi explicitamente carimbado para esta sessão.
+
+            // 1. Soma Mesas vinculadas a esta sessão específica
+            $vendasMesas = \App\Models\Bar\BarOrder::where('status', 'paid')
+                ->where('bar_cash_session_id', $sessao->id)
+                ->sum('total_value');
+
+            // 2. Soma PDV vinculadas a esta sessão específica
+            $vendasPDV = \App\Models\Bar\BarSale::where('status', 'pago')
+                ->where('bar_cash_session_id', $sessao->id)
+                ->sum('total_value');
+
+            // 3. Movimentações (Sangria/Reforço)
             $movimentacoes = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $sessao->id)->get();
-
-            // 1. Somatória de Vendas Brutas (Registradas como 'venda' no fluxo)
-            $vendasBrutasTotal = $movimentacoes->where('type', 'venda')->sum('amount');
-
-            // 2. Somatória de Estornos (O que anula a venda)
-            $totalEstornado = $movimentacoes->where('type', 'estorno')->sum('amount');
-
-            // 3. Reforços e Sangrias
             $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
             $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
 
-            // 4. Resultado para a Tabela de Auditoria
+            // 4. Resultado Final Unificado
+            $sessao->vendas_turno = $vendasMesas + $vendasPDV;
 
-            // "Vendas do Turno" agora mostra o Líquido Real (Vendas - Estornos)
-            // Isso fará com que o valor na coluna "Vendas" bata com o que o usuário viu no dashboard
-            $sessao->vendas_turno = $vendasBrutasTotal - $totalEstornado;
-
-            // 📊 FÓRMULA MESTRA (Idêntica ao Controller de Fechamento)
-            // Total Esperado = (Fundo Inicial + Vendas Brutas + Reforços) - (Sangrias + Estornos)
-            $sessao->total_sistema_esperado = ($sessao->opening_balance + $vendasBrutasTotal + $reforcos) - ($sangrias + $totalEstornado);
+            // FÓRMULA: Total esperado = Fundo + Vendas + Reforços - Sangrias
+            $sessao->total_sistema_esperado = $sessao->opening_balance + $sessao->vendas_turno + $reforcos - $sangrias;
         }
 
         return view('bar.reports.cashier', compact('sessoes', 'mesReferencia'));
@@ -232,19 +217,10 @@ class BarReportController extends Controller
         $startDate = \Carbon\Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = \Carbon\Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 🛡️ LÓGICA DE PRIVACIDADE MULTI-CAIXA
-        $user = auth()->user();
-        $isAdmin = in_array($user->role, ['admin', 'gestor']);
-
         // 2. Query Principal na bar_cash_movements
         $query = DB::table('bar_cash_movements')
             ->where('type', 'venda') // Apenas entradas de vendas
             ->whereBetween('created_at', [$startDate, $endDate]);
-
-        // 🔥 O FILTRO MÁGICO: Se não for admin, vê apenas os SEUS pagamentos
-        if (!$isAdmin) {
-            $query->where('user_id', $user->id);
-        }
 
         // Filtro por nome do método (Caso queira buscar um específico)
         if ($request->filled('search')) {

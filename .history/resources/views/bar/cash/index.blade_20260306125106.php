@@ -171,26 +171,55 @@
         @else
             {{-- CARDS FINANCEIROS --}}
             <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
-
-                {{-- 💵 DINHEIRO EM GAVETA --}}
+                {{-- 💵 DINHEIRO REAL NA MÃO --}}
                 <div
                     class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 relative shadow-2xl border-l-4 border-l-emerald-500">
                     <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
                         Dinheiro em Gaveta
                     </span>
                     <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        {{-- Usamos a variável dinheiroGeral que já vem blindada contra estornos de PIX --}}
                         R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}
                     </span>
                 </div>
 
-                {{-- ⚡ TOTAL DIGITAL (Líquido: PIX + Cartões) --}}
+                {{-- ⚡ PIX RECEBIDO --}}
+                @php
+                    // Filtramos os movimentos da sessão atual para mostrar o PIX líquido (Vendas - Estornos de PIX)
+                    $vendasPix = $movements->where('payment_method', 'pix')->where('type', 'venda')->sum('amount');
+                    $estornosPix = $movements->where('payment_method', 'pix')->where('type', 'estorno')->sum('amount');
+                    $totalPix = max(0, $vendasPix - $estornosPix);
+                @endphp
                 <div
                     class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-cyan-400">
                     <span class="text-[10px] font-black text-cyan-400 uppercase tracking-widest block mb-2 italic">
-                        Total Digital
+                        Total em PIX
                     </span>
                     <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                        R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
+                        R$ {{ number_format($totalPix, 2, ',', '.') }}
+                    </span>
+                </div>
+
+                {{-- 💳 CARTÕES (DÉBITO/CRÉDITO/MISTO) --}}
+                @php
+                    $metodosCartao = ['cartao', 'debito', 'credito', 'misto'];
+                    $vendasCartao = $movements
+                        ->whereIn('payment_method', $metodosCartao)
+                        ->where('type', 'venda')
+                        ->sum('amount');
+                    $estornosCartao = $movements
+                        ->whereIn('payment_method', $metodosCartao)
+                        ->where('type', 'estorno')
+                        ->sum('amount');
+                    $totalCartao = max(0, $vendasCartao - $estornosCartao);
+                @endphp
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-purple-500">
+                    <span class="text-[10px] font-black text-purple-400 uppercase tracking-widest block mb-2 italic">
+                        Cartões (Líquido)
+                    </span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($totalCartao, 2, ',', '.') }}
                     </span>
                 </div>
 
@@ -205,27 +234,16 @@
                     </span>
                 </div>
 
-                {{-- 🚫 TOTAL ESTORNADO --}}
+                {{-- 🚫 RESUMO DE CANCELAMENTOS --}}
                 <div
-                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ ($totalEstornado ?? 0) > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ $totalEstornado > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
                     <span
-                        class="text-[10px] font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">
+                        class="text-[10px] font-black {{ $totalEstornado > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">
                         Total Estornado
                     </span>
                     <span
-                        class="text-4xl font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
+                        class="text-4xl font-black {{ $totalEstornado > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
                         R$ {{ number_format($totalEstornado ?? 0, 2, ',', '.') }}
-                    </span>
-                </div>
-
-                {{-- 💰 CARD DE APOIO: TOTAL LÍQUIDO DO TURNO --}}
-                <div
-                    class="bg-gray-800/50 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl border-l-4 border-l-white/20">
-                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">
-                        Faturamento Real
-                    </span>
-                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                        R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
                     </span>
                 </div>
             </div>
@@ -406,8 +424,7 @@
             // Regra 2: Somente o dono do turno ou um Gestor/Admin pode fechar
             if (donoDaSessaoId !== usuarioLogadoId && !isGestor && donoDaSessaoId !== "") {
                 alert(
-                    "⚠️ ERRO DE PERMISSÃO\n\nEste turno pertence a outro operador. Somente o dono do caixa ou um Gestor pode encerrá-lo."
-                    );
+                    "⚠️ ERRO DE PERMISSÃO\n\nEste turno pertence a outro operador. Somente o dono do caixa ou um Gestor pode encerrá-lo.");
                 return false;
             }
 

@@ -47,7 +47,7 @@ class BarCashController extends Controller
 
         $mesasAbertasCount = BarTable::where('status', 'occupied')->count();
 
-        // Inicialização de variáveis para segurança da View
+        // Inicialização de variáveis para evitar erros de view
         $movements = collect();
         $totalBruto = 0;
         $faturamentoDigital = 0;
@@ -57,55 +57,46 @@ class BarCashController extends Controller
         $totalEstornado = 0;
 
         if ($currentSession) {
-            // 2. BUSCA TODAS AS MOVIMENTAÇÕES (Fonte única da verdade)
+            // 2. BUSCA TODAS AS MOVIMENTAÇÕES (Base única de cálculo)
             $allMovements = BarCashMovement::with(['user', 'barOrder.table'])
                 ->where('bar_cash_session_id', $currentSession->id)
                 ->get();
 
-            // Histórico visual (Colaborador vê o dele, Gestor vê a sessão)
+            // Histórico visual (Respeitando permissões)
             $movements = (!in_array($user->role, ['admin', 'gestor']))
                 ? $allMovements->where('user_id', $user->id)
                 : $allMovements;
             $movements = $movements->sortByDesc('created_at');
 
-            // 3. MOVIMENTAÇÕES GERAIS
+            // 🎯 MATEMÁTICA LÍQUIDA PARA OS CARDS
+
+            // A. DINHEIRO (Espécie)
+            $vendasDinheiroBruto = $allMovements->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
+            $estornosDinheiro = $allMovements->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
             $reforcos = $allMovements->where('type', 'reforco')->sum('amount');
             $sangrias = $allMovements->where('type', 'sangria')->sum('amount');
 
-            // 🎯 MATEMÁTICA LÍQUIDA (Blindagem contra Maiúsculas/Minúsculas)
+            // B. DIGITAL (PIX/Cartões)
+            $vendasDigitalBruto = $allMovements->where('type', 'venda')
+                ->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])
+                ->sum('amount');
+            $estornosDigital = $allMovements->where('type', 'estorno')
+                ->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])
+                ->sum('amount');
 
-            // A. DINHEIRO
-            $vendasDinheiro = $allMovements->where('type', 'venda')->filter(function ($m) {
-                return strtolower($m->payment_method) === 'dinheiro';
-            })->sum('amount');
+            // 📊 RESULTADOS PARA A VIEW
 
-            $estornosDinheiro = $allMovements->where('type', 'estorno')->filter(function ($m) {
-                return strtolower($m->payment_method) === 'dinheiro';
-            })->sum('amount');
+            // 1. Dinheiro na Gaveta (Líquido: Fundo + Vendas + Reforços - Sangrias - Estornos)
+            $dinheiroGeral = ($currentSession->opening_balance + $vendasDinheiroBruto + $reforcos) - ($sangrias + $estornosDinheiro);
 
-            // B. DIGITAL (PIX, Cartões, etc)
-            $metodosDigitais = ['pix', 'credito', 'debito', 'cartao', 'misto', 'crédito', 'débito'];
+            // 2. Faturamento Digital (Líquido: Vendas Digital - Estornos Digital)
+            $faturamentoDigital = $vendasDigitalBruto - $estornosDigital;
 
-            $vendasDigital = $allMovements->where('type', 'venda')->filter(function ($m) use ($metodosDigitais) {
-                return in_array(strtolower($m->payment_method), $metodosDigitais);
-            })->sum('amount');
+            // 3. Faturamento Bruto Total (O valor real que deve ser fechado)
+            // É a soma do que entrou líquido em dinheiro (sem o fundo inicial) + líquido digital
+            $totalBruto = ($vendasDinheiroBruto - $estornosDinheiro) + $faturamentoDigital;
 
-            $estornosDigital = $allMovements->where('type', 'estorno')->filter(function ($m) use ($metodosDigitais) {
-                return in_array(strtolower($m->payment_method), $metodosDigitais);
-            })->sum('amount');
-
-            // 📊 CÁLCULOS DOS CARDS VISUAIS
-
-            // 1. Dinheiro na Gaveta (Fundo + Vendas Dinheiro + Reforços - Sangrias - Estornos Dinheiro)
-            $dinheiroGeral = ($currentSession->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
-
-            // 2. Faturamento Digital Líquido (Vendas Digital - Estornos Digital)
-            $faturamentoDigital = $vendasDigital - $estornosDigital;
-
-            // 3. FATURAMENTO TOTAL LÍQUIDO (O que deve bater com o fechamento)
-            $totalBruto = ($vendasDinheiro - $estornosDinheiro) + $faturamentoDigital;
-
-            // 4. Total de Estornos (Informativo)
+            // 4. Total de Estornos (Apenas informativo)
             $totalEstornado = $estornosDinheiro + $estornosDigital;
         }
 

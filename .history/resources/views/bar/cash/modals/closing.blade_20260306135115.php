@@ -162,27 +162,27 @@
      * Compara o valor contado apenas com o que deve existir em espécie.
      */
     function calcularDiferenca() {
-        // 🎯 O AJUSTE DE MESTRE:
-        // Somamos o Faturamento Líquido ($totalBruto) com o Fundo de Abertura.
-        const faturamentoTurno = {{ $totalBruto ?? 0 }};
-        const fundoAbertura = {{ $currentSession->opening_balance ?? 0 }};
-        const totalEsperadoSistema = faturamentoTurno + fundoAbertura;
+        // 🎯 O NOVO PULO DO GATO: Somamos Dinheiro + Digital para bater o TOTAL
+        const esperadoEmEspecie = {{ $dinheiroGeral ?? 0 }};
+        const faturamentoDigital = {{ $faturamentoDigital ?? 0 }};
+        const totalEsperadoGeral = esperadoEmEspecie + faturamentoDigital;
 
         const input = document.getElementById('actual_balance_input');
         const contado = parseFloat(input.value) || 0;
+
         const display = document.getElementById('msg_diferenca');
 
-        // Se o campo estiver vazio ou zero
+        // Se o campo estiver vazio ou zero, limpa ou dá a dica do valor total
         if (input.value === "" || input.value === "0") {
-            display.innerText = "DIGITE O TOTAL: VENDAS + TROCO (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
+            display.innerText = "DIGITE O VALOR TOTAL (R$ " + totalEsperadoGeral.toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             }) + ")";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-orange-500 animate-pulse";
+            display.className = "text-[10px] font-black uppercase tracking-widest text-gray-500";
             return;
         }
 
-        // Diferença contra o total absoluto (Vendas + Fundo)
-        const diferenca = contado - totalEsperadoSistema;
+        // Agora a diferença é sobre o faturamento BRUTO da sessão
+        const diferenca = contado - totalEsperadoGeral;
 
         if (Math.abs(diferenca) < 0.01) {
             display.innerText = "✅ VALOR TOTAL CONFERIDO";
@@ -193,6 +193,7 @@
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-blue-400";
         } else {
+            // Se faltar em relação ao total vendido
             display.innerText = "⚠️ FALTA NO TOTAL: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });

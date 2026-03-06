@@ -34,7 +34,7 @@ class BarOrderController extends Controller
 
     public function cancelarPdv(Request $request, BarSale $sale)
     {
-        // 1. Validar Supervisor (Mantido)
+        // 1. Validar Supervisor
         $supervisor = User::where('email', $request->supervisor_email)->first();
         if (
             !$supervisor || !Hash::check($request->supervisor_password, $supervisor->password) ||
@@ -43,21 +43,17 @@ class BarOrderController extends Controller
             return back()->with('error', '❌ Autorização negada: Senha de gestor inválida.');
         }
 
-        // 2. Trava de Caixa (AJUSTADA PARA MULTI-USUÁRIO) 🛡️
-        $caixaAberto = BarCashSession::where('status', 'open')
-            ->where('user_id', auth()->id()) // Filtra apenas o caixa do operador atual
-            ->first();
-
+        // 2. Trava de Caixa
+        $caixaAberto = BarCashSession::where('status', 'open')->first();
         if (!$caixaAberto) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Você não possui um turno de caixa aberto para processar este estorno.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Não existe um caixa aberto.');
         }
 
-        // Agora o ID baterá corretamente, pois estamos comparando com o caixa do dono da venda
         if ($sale->bar_cash_session_id != $caixaAberto->id) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Venda pertence a outro turno ou operador.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Venda pertence a um turno de caixa já encerrado.');
         }
 
-        // Verifica se já está cancelada (Mantido)
+        // Verifica se já está cancelada
         if (in_array($sale->status, ['cancelado', 'cancelled', 'anulada'])) {
             return back()->with('error', 'Esta venda já está cancelada.');
         }
@@ -65,33 +61,35 @@ class BarOrderController extends Controller
         try {
             DB::transaction(function () use ($sale, $supervisor, $request, $caixaAberto) {
 
-                // 3. Devolver Itens ao Estoque (Mantido)
+                // 3. Devolver Itens ao Estoque (Inteligente: Trata Combo e Simples) 🔄
                 foreach ($sale->items as $item) {
                     if ($item->product) {
+                        // 🚀 Chama o método do Model que já sabe se deve devolver os "filhos" do combo
                         $item->product->devolverEstoque($item->quantity, "PDV #{$sale->id}");
 
+                        // Mantemos o log de movimento para auditoria de QUEM autorizou o cancelamento
                         \App\Models\Bar\BarStockMovement::create([
                             'bar_product_id' => $item->bar_product_id,
                             'user_id'        => auth()->id(),
-                            'type'           => 'entrada',
+                            'type'           => 'entrada', // ou 'input' como estava no seu original
                             'quantity'       => $item->quantity,
                             'description'    => "CANCELAMENTO PDV #{$sale->id}: Autorizado por {$supervisor->name}.",
                         ]);
                     }
                 }
 
-                // 4. Estorno Financeiro (Mantido)
+                // 4. Estorno Financeiro
                 if ($sale->payment_method === 'dinheiro') {
                     $caixaAberto->decrement('expected_balance', $sale->total_value);
                 }
 
-                // 5. Registrar Movimentação no Caixa (Mantido)
+                // 5. Registrar Movimentação no Caixa com Motivo e Autorizador Concatenados
                 $motivoDesc = $request->reason ? " | MOTIVO: " . $request->reason : " | MOTIVO: Não informado";
-                $authDesc = " | POR: " . $supervisor->name;
+                $authDesc = " | POR: " . $supervisor->name; // 🔐 Nome do Supervisor para Auditoria
 
                 BarCashMovement::create([
                     'bar_cash_session_id' => $caixaAberto->id,
-                    'user_id'             => auth()->id(),
+                    'user_id'             => auth()->id(), // Operador logado
                     'bar_sale_id'         => $sale->id,
                     'type'                => 'estorno',
                     'payment_method'      => $sale->payment_method ?? 'misto',
@@ -144,19 +142,14 @@ class BarOrderController extends Controller
             return back()->with('error', '❌ Autorização negada: E-mail ou Senha de gestor inválidos.');
         }
 
-        // 2. Trava de Caixa (AJUSTADA PARA MULTI-USUÁRIO) 🛡️
-        // Buscamos o caixa aberto especificamente DESTE usuário logado
-        $caixaAberto = BarCashSession::where('status', 'open')
-            ->where('user_id', auth()->id())
-            ->first();
-
+        // 2. Trava de Caixa
+        $caixaAberto = BarCashSession::where('status', 'open')->first();
         if (!$caixaAberto) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Você não possui um turno de caixa aberto para processar este estorno.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Não existe um caixa aberto.');
         }
 
-        // Verificamos se a comanda pertence ao turno ATUAL deste usuário
         if ($order->bar_cash_session_id != $caixaAberto->id) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Esta comanda pertence a outro turno ou operador.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Esta comanda pertence a um turno de caixa já encerrado.');
         }
 
         try {

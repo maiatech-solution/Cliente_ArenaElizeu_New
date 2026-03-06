@@ -144,19 +144,14 @@ class BarOrderController extends Controller
             return back()->with('error', '❌ Autorização negada: E-mail ou Senha de gestor inválidos.');
         }
 
-        // 2. Trava de Caixa (AJUSTADA PARA MULTI-USUÁRIO) 🛡️
-        // Buscamos o caixa aberto especificamente DESTE usuário logado
-        $caixaAberto = BarCashSession::where('status', 'open')
-            ->where('user_id', auth()->id())
-            ->first();
-
+        // 2. Trava de Caixa
+        $caixaAberto = BarCashSession::where('status', 'open')->first();
         if (!$caixaAberto) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Você não possui um turno de caixa aberto para processar este estorno.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Não existe um caixa aberto.');
         }
 
-        // Verificamos se a comanda pertence ao turno ATUAL deste usuário
         if ($order->bar_cash_session_id != $caixaAberto->id) {
-            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Esta comanda pertence a outro turno ou operador.');
+            return back()->with('error', '❌ OPERAÇÃO BLOQUEADA: Esta comanda pertence a um turno de caixa já encerrado.');
         }
 
         try {

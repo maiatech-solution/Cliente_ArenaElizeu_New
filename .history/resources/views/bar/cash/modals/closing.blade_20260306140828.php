@@ -162,11 +162,9 @@
      * Compara o valor contado apenas com o que deve existir em espécie.
      */
     function calcularDiferenca() {
-        // 🎯 O AJUSTE DE MESTRE:
-        // Somamos o Faturamento Líquido ($totalBruto) com o Fundo de Abertura.
-        const faturamentoTurno = {{ $totalBruto ?? 0 }};
-        const fundoAbertura = {{ $currentSession->opening_balance ?? 0 }};
-        const totalEsperadoSistema = faturamentoTurno + fundoAbertura;
+        // 🎯 O PULO DO GATO: Não fazemos conta no JS.
+        // Usamos o valor que o Controller já calculou como Líquido Real.
+        const totalEsperadoSistema = {{ $totalBruto ?? 0 }};
 
         const input = document.getElementById('actual_balance_input');
         const contado = parseFloat(input.value) || 0;
@@ -174,14 +172,14 @@
 
         // Se o campo estiver vazio ou zero
         if (input.value === "" || input.value === "0") {
-            display.innerText = "DIGITE O TOTAL: VENDAS + TROCO (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
+            display.innerText = "DIGITE O VALOR TOTAL (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             }) + ")";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-orange-500 animate-pulse";
+            display.className = "text-[10px] font-black uppercase tracking-widest text-gray-500";
             return;
         }
 
-        // Diferença contra o total absoluto (Vendas + Fundo)
+        // Diferença direta contra o faturamento líquido auditado
         const diferenca = contado - totalEsperadoSistema;
 
         if (Math.abs(diferenca) < 0.01) {

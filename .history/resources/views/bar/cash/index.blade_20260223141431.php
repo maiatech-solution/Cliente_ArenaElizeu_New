@@ -7,31 +7,19 @@
                 <div class="flex items-center gap-4">
                     <span class="text-3xl">⚠️</span>
                     <div>
-                        <h4 class="text-white font-black uppercase italic leading-none">
-                            Atenção: Turno de {{ $openSession->user->name ?? 'Operador' }} Vencido!
+                        <h4 class="text-white font-black uppercase italic leading-none">Atenção: Caixa do dia anterior!
                         </h4>
                         <p class="text-white/80 text-[10px] font-bold uppercase tracking-widest mt-1">
                             Este caixa foi aberto em
-                            {{ \Carbon\Carbon::parse($openSession->opened_at)->format('d/m \à\s H:i') }}.
-
-                            @if ($openSession->user_id !== auth()->id())
-                                <span class="text-yellow-300 underline font-black">
-                                    Aguarde o encerramento do turno do colega pelo Gestor.
-                                </span>
-                            @else
-                                Finalize seu movimento pendente antes de iniciar o de hoje.
-                            @endif
+                            {{ \Carbon\Carbon::parse($openSession->opened_at)->format('d/m') }}. Feche-o antes de
+                            iniciar o movimento de hoje.
                         </p>
                     </div>
                 </div>
-
-                {{-- Só permite clicar no botão de fechar se for o dono do caixa ou admin --}}
-                @if ($openSession->user_id === auth()->id() || in_array(auth()->user()->role, ['admin', 'gestor']))
-                    <button onclick="tentarEncerrarTurno()"
-                        class="bg-white text-red-600 px-6 py-2 rounded-xl font-black uppercase text-[10px] hover:scale-105 transition-all shadow-lg">
-                        Fechar Agora
-                    </button>
-                @endif
+                <button onclick="tentarEncerrarTurno()"
+                    class="bg-white text-red-600 px-6 py-2 rounded-xl font-black uppercase text-[10px] hover:scale-105 transition-all">
+                    Fechar Agora
+                </button>
             </div>
         @endif
 
@@ -171,61 +159,76 @@
         @else
             {{-- CARDS FINANCEIROS --}}
             <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
-
-                {{-- 💵 DINHEIRO EM GAVETA --}}
+                {{-- 💵 DINHEIRO REAL NA MÃO --}}
                 <div
                     class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 relative shadow-2xl border-l-4 border-l-emerald-500">
-                    <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
-                        Dinheiro em Gaveta
-                    </span>
+                    <span
+                        class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">Dinheiro
+                        em Gaveta</span>
                     <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
                         R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}
                     </span>
                 </div>
 
-                {{-- ⚡ TOTAL DIGITAL (Líquido: PIX + Cartões) --}}
+                {{-- ⚡ PIX RECEBIDO --}}
+                @php
+                    $vendasPix = $movements->where('payment_method', 'pix')->where('type', 'venda')->sum('amount');
+                    $estornosPix = $movements->where('payment_method', 'pix')->where('type', 'estorno')->sum('amount');
+                    $totalPix = max(0, $vendasPix - $estornosPix);
+                @endphp
                 <div
                     class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-cyan-400">
-                    <span class="text-[10px] font-black text-cyan-400 uppercase tracking-widest block mb-2 italic">
-                        Total Digital
-                    </span>
+                    <span class="text-[10px] font-black text-cyan-400 uppercase tracking-widest block mb-2 italic">Total
+                        em PIX</span>
                     <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                        R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
+                        R$ {{ number_format($totalPix, 2, ',', '.') }}
+                    </span>
+                </div>
+
+                {{-- 💳 CARTÕES (DÉBITO/CRÉDITO/MISTO) --}}
+                @php
+                    $metodosCartao = ['cartao', 'debito', 'credito', 'misto'];
+                    $vendasCartao = $movements
+                        ->whereIn('payment_method', $metodosCartao)
+                        ->where('type', 'venda')
+                        ->sum('amount');
+                    $estornosCartao = $movements
+                        ->whereIn('payment_method', $metodosCartao)
+                        ->where('type', 'estorno')
+                        ->sum('amount');
+                    $totalCartao = max(0, $vendasCartao - $estornosCartao);
+                @endphp
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-purple-500">
+                    <span
+                        class="text-[10px] font-black text-purple-400 uppercase tracking-widest block mb-2 italic">Cartões
+                        (Líquido)</span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($totalCartao, 2, ',', '.') }}
                     </span>
                 </div>
 
                 {{-- 🔻 TOTAL DE SANGRIAS --}}
                 <div
                     class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-red-500">
-                    <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
-                        Sangrias / Saídas
-                    </span>
+                    <span
+                        class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">Sangrias
+                        / Saídas</span>
                     <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
                         R$ {{ number_format($sangrias ?? 0, 2, ',', '.') }}
                     </span>
                 </div>
 
-                {{-- 🚫 TOTAL ESTORNADO --}}
+                {{-- 🚫 RESUMO DE CANCELAMENTOS --}}
+                @php $totalEstornos = $movements->where('type', 'estorno')->sum('amount'); @endphp
                 <div
-                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ ($totalEstornado ?? 0) > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ $totalEstornos > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
                     <span
-                        class="text-[10px] font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">
-                        Total Estornado
-                    </span>
+                        class="text-[10px] font-black {{ $totalEstornos > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">Total
+                        Estornado</span>
                     <span
-                        class="text-4xl font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
-                        R$ {{ number_format($totalEstornado ?? 0, 2, ',', '.') }}
-                    </span>
-                </div>
-
-                {{-- 💰 CARD DE APOIO: TOTAL LÍQUIDO DO TURNO --}}
-                <div
-                    class="bg-gray-800/50 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl border-l-4 border-l-white/20">
-                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">
-                        Faturamento Real
-                    </span>
-                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                        R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
+                        class="text-4xl font-black {{ $totalEstornos > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
+                        R$ {{ number_format($totalEstornos, 2, ',', '.') }}
                     </span>
                 </div>
             </div>
@@ -239,9 +242,6 @@
                             class="text-[10px] text-gray-600 font-bold uppercase tracking-tighter italic font-black underline decoration-green-500/30 underline-offset-4">
                             Faturado: R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
                         </span>
-                        <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                            Sessão ID: #{{ $currentSession->id }}
-                        </span>
                         <span
                             class="{{ $currentSession->status == 'open' ? 'text-green-500 animate-pulse' : 'text-red-500' }} text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
                             <span
@@ -252,115 +252,105 @@
                 </div>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead>
-                            <tr
-                                class="text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-800 bg-black/20">
-                                <th class="p-6">Hora</th>
-                                <th class="p-6">Descrição</th>
-                                <th class="p-6">Operador</th>
-                                <th class="p-6 text-right font-black">Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-800/50">
-                            @forelse($movements as $mov)
-                                @php
-                                    // 1. Lógica de cores e sinais
-                                    $isSaida = in_array($mov->type, ['sangria', 'estorno']);
-                                    $isVenda = in_array($mov->type, ['venda', 'reforco']);
+                 <table class="w-full text-left">
+    <thead>
+        <tr class="text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-800 bg-black/20">
+            <th class="p-6">Hora</th>
+            <th class="p-6">Descrição</th>
+            <th class="p-6">Operador</th>
+            <th class="p-6 text-right font-black">Valor</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-800/50">
+        @forelse($movements as $mov)
+            @php
+                // 1. Lógica de cores e sinais
+                $isSaida = in_array($mov->type, ['sangria', 'estorno']);
+                $isVenda = in_array($mov->type, ['venda', 'reforco']);
 
-                                    $corValor = 'text-white';
-                                    if ($isSaida) {
-                                        $corValor = 'text-red-500';
-                                    }
-                                    if ($isVenda) {
-                                        $corValor = 'text-green-500';
-                                    }
+                $corValor = 'text-white';
+                if ($isSaida) { $corValor = 'text-red-500'; }
+                if ($isVenda) { $corValor = 'text-green-500'; }
 
-                                    // 2. Lógica visual para a Forma de Pagamento
-                                    $metodo = strtolower($mov->payment_method);
-                                    $bgMetodo = 'bg-gray-800 text-gray-400 border-gray-700';
+                // 2. Lógica visual para a Forma de Pagamento
+                $metodo = strtolower($mov->payment_method);
+                $bgMetodo = 'bg-gray-800 text-gray-400 border-gray-700';
 
-                                    if ($metodo == 'dinheiro') {
-                                        $bgMetodo = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                                    } elseif (in_array($metodo, ['pix', 'transferencia'])) {
-                                        $bgMetodo = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
-                                    } elseif (in_array($metodo, ['cartao', 'debito', 'credito', 'misto'])) {
-                                        $bgMetodo = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-                                    }
+                if ($metodo == 'dinheiro') {
+                    $bgMetodo = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                } elseif (in_array($metodo, ['pix', 'transferencia'])) {
+                    $bgMetodo = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
+                } elseif (in_array($metodo, ['cartao', 'debito', 'credito', 'misto'])) {
+                    $bgMetodo = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+                }
 
-                                    // 3. Tratamento da Descrição
-                                    $partesMotivo = explode(' | MOTIVO: ', $mov->description);
-                                    $tituloDescricao = $partesMotivo[0];
-                                    $resto = $partesMotivo[1] ?? '';
-                                    $partesAutorizador = explode(' | POR: ', $resto);
-                                    $motivoTexto = $partesAutorizador[0] ?? null;
-                                    $autorizadorNome = $partesAutorizador[1] ?? null;
-                                @endphp
-                                <tr class="hover:bg-white/[0.02] transition-colors group">
-                                    <td class="p-6 text-gray-500 font-bold text-xs">
-                                        {{ $mov->created_at->format('H:i') }}
-                                    </td>
-                                    <td class="p-6">
-                                        <span class="text-white block font-black text-xs uppercase tracking-tight">
-                                            {{ $tituloDescricao }}
-                                        </span>
+                // 3. Lógica de Auditoria (Desmembrando Título | Motivo | Autorizador)
+                $partesMotivo = explode(' | MOTIVO: ', $mov->description);
+                $tituloDescricao = $partesMotivo[0];
 
-                                        @if ($motivoTexto)
-                                            <span class="text-[10px] text-orange-400 font-bold italic block mt-1">
-                                                💬 Motivo: {{ $motivoTexto }}
-                                            </span>
-                                        @endif
+                $resto = $partesMotivo[1] ?? '';
+                $partesAutorizador = explode(' | POR: ', $resto);
 
-                                        @if ($autorizadorNome)
-                                            <span
-                                                class="text-[9px] text-indigo-400 font-black uppercase tracking-widest block mt-1">
-                                                🔐 Autorizado por: {{ $autorizadorNome }}
-                                            </span>
-                                        @endif
+                $motivoTexto = $partesAutorizador[0] ?? null;
+                $autorizadorNome = $partesAutorizador[1] ?? null;
+            @endphp
+            <tr class="hover:bg-white/[0.02] transition-colors group">
+                <td class="p-6 text-gray-500 font-bold text-xs">
+                    {{ $mov->created_at->format('H:i') }}
+                </td>
+                <td class="p-6">
+                    {{-- Título Principal --}}
+                    <span class="text-white block font-black text-xs uppercase tracking-tight">
+                        {{ $tituloDescricao }}
+                    </span>
 
-                                        <div class="flex items-center gap-2 mt-2">
-                                            <span
-                                                class="text-[8px] uppercase font-black px-2 py-0.5 rounded border {{ $isSaida ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20' }}">
-                                                {{ $mov->type }}
-                                            </span>
+                    {{-- Exibição do Motivo (Laranja) --}}
+                    @if ($motivoTexto)
+                        <span class="text-[10px] text-orange-400 font-bold italic block mt-1">
+                            💬 Motivo: {{ $motivoTexto }}
+                        </span>
+                    @endif
 
-                                            @if ($mov->payment_method)
-                                                <span
-                                                    class="text-[8px] uppercase font-black px-2 py-0.5 rounded border {{ $bgMetodo }}">
-                                                    💳 {{ $mov->payment_method }}
-                                                </span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td class="p-6">
-                                        <div class="flex items-center gap-2">
-                                            <div
-                                                class="w-6 h-6 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-[10px] text-orange-500 font-black">
-                                                {{ substr($mov->user->name, 0, 1) }}
-                                            </div>
-                                            <span
-                                                class="text-gray-400 text-[10px] font-bold uppercase italic tracking-widest">
-                                                {{ $mov->user->name }}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td class="p-6 text-right font-black italic text-xl {{ $corValor }}">
-                                        {{ $isSaida ? '-' : ($isVenda ? '+' : '') }} R$
-                                        {{ number_format($mov->amount, 2, ',', '.') }}
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="4" class="p-24 text-center opacity-20">
-                                        <p class="text-gray-600 font-black uppercase tracking-widest italic text-3xl">
-                                            Sem movimentações
-                                        </p>
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                    {{-- Exibição do Autorizador (Índigo/Roxo) --}}
+                    @if ($autorizadorNome)
+                        <span class="text-[9px] text-indigo-400 font-black uppercase tracking-widest block mt-1">
+                            🔐 Autorizado por: {{ $autorizadorNome }}
+                        </span>
+                    @endif
+
+                    <div class="flex items-center gap-2 mt-2">
+                        {{-- Badge do Tipo --}}
+                        <span class="text-[8px] uppercase font-black px-2 py-0.5 rounded border {{ $isSaida ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20' }}">
+                            {{ $mov->type }}
+                        </span>
+
+                        {{-- Badge da Forma de Pagamento --}}
+                        @if ($mov->payment_method)
+                            <span class="text-[8px] uppercase font-black px-2 py-0.5 rounded border {{ $bgMetodo }}">
+                                💳 {{ $mov->payment_method }}
+                            </span>
+                        @endif
+                    </div>
+                </td>
+                <td class="p-6 text-gray-400 text-[10px] font-bold uppercase italic tracking-widest">
+                    {{ $mov->user->name }}
+                </td>
+                <td class="p-6 text-right font-black italic text-xl {{ $corValor }}">
+                    {{ $isSaida ? '-' : ($isVenda ? '+' : '') }} R$
+                    {{ number_format($mov->amount, 2, ',', '.') }}
+                </td>
+            </tr>
+        @empty
+            <tr>
+                <td colspan="4" class="p-24 text-center opacity-20">
+                    <p class="text-gray-600 font-black uppercase tracking-widest italic text-3xl">
+                        Sem movimentações
+                    </p>
+                </td>
+            </tr>
+        @endforelse
+    </tbody>
+</table>
                 </div>
             </div>
         @endif
@@ -386,31 +376,15 @@
         });
 
         /**
-         * 2. 🛡️ TRAVA DE SEGURANÇA: MESAS ABERTAS E DONO DO CAIXA
+         * 2. TRAVA DE SEGURANÇA: MESAS ABERTAS
          */
         function tentarEncerrarTurno() {
             const mesasAbertas = {{ $mesasAbertasCount ?? 0 }};
-
-            // 🔒 Validação de Dono do Caixa (Segurança Multi-Usuário)
-            const donoDaSessaoId = "{{ $openSession->user_id ?? '' }}";
-            const usuarioLogadoId = "{{ auth()->id() }}";
-            const isGestor = {{ in_array(auth()->user()->role, ['admin', 'gestor']) ? 'true' : 'false' }};
-
-            // Regra 1: Não fecha com mesas abertas
             if (mesasAbertas > 0) {
                 alert("⚠️ OPERAÇÃO BLOQUEADA\n\nExistem " + mesasAbertas +
                     " mesa(s) aberta(s). Finalize as contas antes de fechar o caixa.");
                 return false;
             }
-
-            // Regra 2: Somente o dono do turno ou um Gestor/Admin pode fechar
-            if (donoDaSessaoId !== usuarioLogadoId && !isGestor && donoDaSessaoId !== "") {
-                alert(
-                    "⚠️ ERRO DE PERMISSÃO\n\nEste turno pertence a outro operador. Somente o dono do caixa ou um Gestor pode encerrá-lo."
-                    );
-                return false;
-            }
-
             // Abre o modal de fechamento
             openModalClosing();
         }
@@ -452,24 +426,27 @@
         }
 
         /**
-         * 4. 🚀 ENVIO COM AUTORIZAÇÃO
+         * 4. 🚀 ENVIO COM AUTORIZAÇÃO (Onde estava o erro)
          */
         function enviarComAutorizacao(idFormulario) {
             const form = document.getElementById(idFormulario);
             if (!form) return;
 
+            // IDs dos campos de senha visíveis em cada contexto
             const camposSenha = {
                 'formCloseCash': 'password_direta_gestor',
                 'formOpenCash': 'password_direta_abertura',
-                'formMovement': 'password_direta_movimentacao'
+                'formMovement': 'password_direta_movimentacao' // ID que está no seu modal de sangria
             };
 
             const inputSenhaVisivel = document.getElementById(camposSenha[idFormulario]);
 
+            // Prioridade 1: Senha digitada agora | Prioridade 2: Memória global
             const passFinal = (inputSenhaVisivel && inputSenhaVisivel.value) ?
                 inputSenhaVisivel.value :
                 window.supervisorMemoriaPass;
 
+            // Puxa o email (seja do campo oculto ou do usuário logado)
             const emailFinal = form.querySelector('input[name="supervisor_email"]')?.value || window.supervisorMemoriaEmail;
 
             if (!passFinal || passFinal.trim() === "") {
@@ -478,23 +455,16 @@
                 return;
             }
 
+            // Injeta os dados no formulário antes de enviar
             const mEmail = form.querySelector('input[name="supervisor_email"]');
             const mPass = form.querySelector('input[name="supervisor_password"]');
 
             if (mEmail && mPass) {
                 mEmail.value = emailFinal;
                 mPass.value = passFinal;
-
-                // 🔄 Feedback visual e trava de clique duplo
-                const btn = document.activeElement;
-                if (btn && btn.tagName === 'BUTTON') {
-                    btn.innerHTML = "PROCESSANDO...";
-                    btn.disabled = true;
-                }
-
                 form.submit();
             } else {
-                alert("Erro: Campos de supervisor não encontrados.");
+                alert("Erro: Campos de supervisor não encontrados no formulário.");
             }
         }
 

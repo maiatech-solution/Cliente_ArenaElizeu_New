@@ -22,7 +22,7 @@ class BarCashController extends Controller
         $date = $request->get('date', date('Y-m-d'));
         $user = auth()->user();
 
-        // 1. Busca a sessão aberta específica DESTE usuário
+        // 🛡️ MUDANÇA: Busca a sessão aberta específica DESTE usuário
         $openSession = BarCashSession::where('status', 'open')
             ->where('user_id', $user->id)
             ->first();
@@ -36,6 +36,8 @@ class BarCashController extends Controller
             }
         }
 
+        // Se estivermos olhando o dia de hoje, prioriza a sessão aberta do usuário.
+        // Se for outra data, busca a última sessão daquele dia.
         $currentSession = ($openSession && Carbon::parse($openSession->opened_at)->format('Y-m-d') == $date)
             ? $openSession
             : BarCashSession::whereDate('opened_at', $date)
@@ -47,66 +49,63 @@ class BarCashController extends Controller
 
         $mesasAbertasCount = BarTable::where('status', 'occupied')->count();
 
-        // Inicialização de variáveis para segurança da View
         $movements = collect();
-        $totalBruto = 0;
-        $faturamentoDigital = 0;
-        $dinheiroGeral = 0;
-        $sangrias = 0;
+        $vendasDinheiro = 0;
+        $vendasDigital = 0;
         $reforcos = 0;
+        $sangriasDinheiro = 0;
         $totalEstornado = 0;
 
         if ($currentSession) {
-            // 2. BUSCA TODAS AS MOVIMENTAÇÕES (Fonte única da verdade)
+            // 1. MOVIMENTAÇÕES PARA O HISTÓRICO VISUAL
             $allMovements = BarCashMovement::with(['user', 'barOrder.table'])
                 ->where('bar_cash_session_id', $currentSession->id)
                 ->get();
 
-            // Histórico visual (Colaborador vê o dele, Gestor vê a sessão)
+            // Histórico filtrado: Colaborador só vê o que ele fez, Gestor vê tudo daquela sessão
             $movements = (!in_array($user->role, ['admin', 'gestor']))
                 ? $allMovements->where('user_id', $user->id)
                 : $allMovements;
+
             $movements = $movements->sortByDesc('created_at');
 
-            // 3. MOVIMENTAÇÕES GERAIS
-            $reforcos = $allMovements->where('type', 'reforco')->sum('amount');
-            $sangrias = $allMovements->where('type', 'sangria')->sum('amount');
+            // 2. FATURAMENTO BRUTO DA SESSÃO ESPECÍFICA
+            $faturamentoBrutoMesas = \App\Models\Bar\BarOrder::where('bar_cash_session_id', $currentSession->id)
+                ->where('status', 'paid')
+                ->sum('total_value');
 
-            // 🎯 MATEMÁTICA LÍQUIDA (Blindagem contra Maiúsculas/Minúsculas)
+            $faturamentoBrutoPDV = \App\Models\Bar\BarSale::where('bar_cash_session_id', $currentSession->id)
+                ->where('status', 'pago')
+                ->sum('total_value');
 
-            // A. DINHEIRO
-            $vendasDinheiro = $allMovements->where('type', 'venda')->filter(function ($m) {
-                return strtolower($m->payment_method) === 'dinheiro';
-            })->sum('amount');
-
-            $estornosDinheiro = $allMovements->where('type', 'estorno')->filter(function ($m) {
-                return strtolower($m->payment_method) === 'dinheiro';
-            })->sum('amount');
-
-            // B. DIGITAL (PIX, Cartões, etc)
-            $metodosDigitais = ['pix', 'credito', 'debito', 'cartao', 'misto', 'crédito', 'débito'];
-
-            $vendasDigital = $allMovements->where('type', 'venda')->filter(function ($m) use ($metodosDigitais) {
-                return in_array(strtolower($m->payment_method), $metodosDigitais);
-            })->sum('amount');
-
-            $estornosDigital = $allMovements->where('type', 'estorno')->filter(function ($m) use ($metodosDigitais) {
-                return in_array(strtolower($m->payment_method), $metodosDigitais);
-            })->sum('amount');
-
-            // 📊 CÁLCULOS DOS CARDS VISUAIS
-
-            // 1. Dinheiro na Gaveta (Fundo + Vendas Dinheiro + Reforços - Sangrias - Estornos Dinheiro)
-            $dinheiroGeral = ($currentSession->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
-
-            // 2. Faturamento Digital Líquido (Vendas Digital - Estornos Digital)
-            $faturamentoDigital = $vendasDigital - $estornosDigital;
-
-            // 3. FATURAMENTO TOTAL LÍQUIDO (O que deve bater com o fechamento)
-            $totalBruto = ($vendasDinheiro - $estornosDinheiro) + $faturamentoDigital;
-
-            // 4. Total de Estornos (Informativo)
+            // 3. SEPARAÇÃO INTELIGENTE DE ESTORNOS
+            $estornosDinheiro = $allMovements->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
+            $estornosDigital = $allMovements->where('type', 'estorno')->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])->sum('amount');
             $totalEstornado = $estornosDinheiro + $estornosDigital;
+
+            // 4. SEPARAÇÃO POR MÉTODO LÍQUIDO
+            $vendasDinheiro = $allMovements->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
+            $vendasDigital = $allMovements->where('type', 'venda')
+                ->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])
+                ->sum('amount');
+
+            $reforcos = $allMovements->where('type', 'reforco')->sum('amount');
+            $sangriasDinheiro = $allMovements->where('type', 'sangria')->sum('amount');
+
+            // 5. CÁLCULOS FINAIS
+            $totalBruto = ($faturamentoBrutoMesas + $faturamentoBrutoPDV) - $totalEstornado;
+            $faturamentoDigital = $vendasDigital - $estornosDigital;
+            $saldoInicialSessao = $currentSession->opening_balance;
+
+            // Dinheiro esperado na gaveta individual
+            $dinheiroGeral = $saldoInicialSessao + $vendasDinheiro + $reforcos - $sangriasDinheiro - $estornosDinheiro;
+            $sangrias = $allMovements->where('type', 'sangria')->sum('amount');
+        } else {
+            $totalBruto = 0;
+            $faturamentoDigital = 0;
+            $dinheiroGeral = 0;
+            $sangrias = 0;
+            $totalEstornado = 0;
         }
 
         return view('bar.cash.index', compact(
@@ -124,6 +123,7 @@ class BarCashController extends Controller
             'caixaVencido'
         ));
     }
+
 
     /**
      * 💸 PROCESSAR MOVIMENTAÇÕES (Sangria e Reforço) com trava de data
@@ -259,14 +259,14 @@ class BarCashController extends Controller
      */
     public function close(Request $request)
     {
-        // 1. Validação do Supervisor (Mantido seu padrão)
+        // 1. Validação do Supervisor (Mantido)
         if (!$request->supervisor_email || !$request->supervisor_password) {
             return back()->with('error', '⚠️ Autorização necessária.');
         }
 
         $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
 
-        if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
+        if (!$supervisor || !Hash::check($request->supervisor_password, $supervisor->password)) {
             return back()->with('error', '⚠️ Falha na autorização do supervisor.');
         }
 
@@ -274,8 +274,8 @@ class BarCashController extends Controller
             return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
         }
 
-        // 2. Trava de Mesas Abertas
-        $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->get();
+        // 2. Trava de Mesas Abertas (Opcional: Pode-se filtrar apenas mesas atendidas por este usuário se quiser)
+        $mesasAbertas = BarTable::where('status', 'occupied')->get();
         if ($mesasAbertas->count() > 0) {
             $numeros = $mesasAbertas->pluck('identifier')->implode(', ');
             return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas ({$numeros}).");
@@ -287,9 +287,9 @@ class BarCashController extends Controller
         ]);
 
         // 3. Processamento do Fechamento
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $supervisor) {
-            // 🛡️ Busca sessão aberta com trava de atualização
-            $session = \App\Models\Bar\BarCashSession::where('status', 'open')
+        return DB::transaction(function () use ($request, $supervisor) {
+            // 🛡️ CORREÇÃO CRÍTICA: Busca apenas o caixa aberto do usuário logado
+            $session = BarCashSession::where('status', 'open')
                 ->where('user_id', auth()->id())
                 ->lockForUpdate()
                 ->first();
@@ -298,28 +298,36 @@ class BarCashController extends Controller
                 return back()->with('error', 'Erro: Você não tem um turno aberto para encerrar.');
             }
 
-            // 🎯 O SEGREDO: BUSCA TODAS AS MOVIMENTAÇÕES DESSA SESSÃO (Fonte Única da Verdade)
-            $movimentacoes = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
+            // 🎯 RECALCULO EM TEMPO REAL (Auditado apenas para esta sessão)
+            $vendasMesas = \App\Models\Bar\BarOrder::where('bar_cash_session_id', $session->id)
+                ->where('status', 'paid')
+                ->sum('total_value');
 
-            // A. Somatória das Vendas Totais (Bruto que entrou no sistema)
-            $vendasBrutasTotal = $movimentacoes->where('type', 'venda')->sum('amount');
+            $vendasPDV = \App\Models\Bar\BarSale::where('bar_cash_session_id', $session->id)
+                ->where('status', 'pago')
+                ->sum('total_value');
 
-            // B. Somatória dos Estornos (Tudo o que foi anulado)
-            $totalEstornado = $movimentacoes->where('type', 'estorno')->sum('amount');
-
-            // C. Reforços e Sangrias
+            // 4. MOVIMENTAÇÕES MANUAIS DA SESSÃO
+            $movimentacoes = BarCashMovement::where('bar_cash_session_id', $session->id)->get();
             $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
             $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
 
-            // 📊 CÁLCULO DO TOTAL ESPERADO (LÍQUIDO REAL)
-            // Fórmula: (Saldo Inicial + Vendas Brutas + Reforços) - (Sangrias + Estornos)
-            $totalEsperadoSistema = ($session->opening_balance + $vendasBrutasTotal + $reforcos) - ($sangrias + $totalEstornado);
+            // 🛡️ Diferenciação de Estorno para Auditoria
+            $estornosDinheiro = $movimentacoes->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
+            $estornosDigital = $movimentacoes->where('type', 'estorno')->whereIn('payment_method', ['pix', 'credito', 'debito', 'cartao', 'misto'])->sum('amount');
+            $totalEstornado = $estornosDinheiro + $estornosDigital;
+
+            // 💰 DINHEIRO ESPERADO NA GAVETA DESTE OPERADOR
+            $vendasDinheiro = $movimentacoes->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
+            $dinheiroEsperadoGaveta = ($session->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
+
+            // 📊 FATURAMENTO LÍQUIDO DO SISTEMA
+            $totalEsperadoSistema = ($session->opening_balance + $vendasMesas + $vendasPDV + $reforcos) - ($sangrias + $totalEstornado);
 
             // ⚖️ AUDITORIA FINAL
-            $actual = $request->actual_balance; // O que o usuário digitou no campo total
-            $difference = $actual - $totalEsperadoSistema;
+            $actual = $request->actual_balance;
+            $difference = $actual - $dinheiroEsperadoGaveta;
 
-            // Atualiza a sessão
             $session->update([
                 'closing_balance' => $actual,
                 'expected_balance' => $totalEsperadoSistema,
@@ -329,13 +337,10 @@ class BarCashController extends Controller
             ]);
 
             $msg = "Turno de " . auth()->user()->name . " encerrado!";
-
             if (abs($difference) < 0.01) {
                 $msg .= " Caixa bateu perfeitamente!";
             } else {
-                $msg .= ($difference < 0)
-                    ? " Quebra detectada! Falta: R$ " . number_format(abs($difference), 2, ',', '.')
-                    : " Sobra detectada! Sobrou: R$ " . number_format(abs($difference), 2, ',', '.');
+                $msg .= ($difference < 0) ? " Quebra detectada!" : " Sobra detectada!";
             }
 
             return redirect()->route('bar.cash.index')->with('success', $msg);

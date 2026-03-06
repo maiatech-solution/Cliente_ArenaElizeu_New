@@ -40,55 +40,56 @@ class BarPosController extends Controller
         try {
             return DB::transaction(function () use ($request) {
 
-                // 1. 🛡️ BUSCAR SESSÃO ESPECÍFICA DO USUÁRIO LOGADO
-                // Alterado de first() para garantir que a venda caia no caixa de QUEM está vendendo
-                $session = BarCashSession::where('status', 'open')
-                    ->where('user_id', auth()->id())
-                    ->first();
+                // 1. BUSCAR SESSÃO DE CAIXA ATIVA
+                $session = BarCashSession::where('status', 'open')->first();
 
                 if (!$session) {
-                    throw new \Exception("Você não possui um caixa aberto! Por favor, abra o seu turno primeiro.");
+                    throw new \Exception("Não existe um caixa aberto! Por favor, abra o caixa primeiro.");
                 }
 
                 $dataAbertura = \Carbon\Carbon::parse($session->opened_at)->format('Y-m-d');
                 $hoje = date('Y-m-d');
 
                 if ($dataAbertura !== $hoje) {
-                    throw new \Exception("⚠️ SEU CAIXA VENCEU: O seu turno aberto é de um dia anterior. Encerre-o e abra um novo.");
+                    throw new \Exception("⚠️ CAIXA VENCIDO: O caixa aberto é de ontem. Encerre o turno e abra um novo.");
                 }
 
                 $metodoFinal = count($request->payments) > 1 ? 'misto' : $request->payments[0]['method'];
 
-                // 2. Criar a Venda vinculada ao caixa do usuário
+                // 2. Criar a Venda
                 $sale = new BarSale();
                 $sale->user_id = auth()->id();
                 $sale->total_value = $request->total_value;
                 $sale->payment_method = $metodoFinal;
                 $sale->status = 'pago';
-                $sale->bar_cash_session_id = $session->id; // Vincula ao ID da sessão do operador
+                $sale->bar_cash_session_id = $session->id;
                 $sale->save();
 
-                // Incrementa o faturamento apenas na sessão deste usuário
                 $session->increment('total_vendas_sistema', $request->total_value);
 
-                // 3. Processar Itens e Estoque (Mantendo sua lógica de Combos)
+                // 3. Processar Itens e Estoque Inteligente 🚀
                 foreach ($request->items as $item) {
+                    // Carregamos o produto com as composições E os produtos filhos (importante carregar o childProduct)
                     $product = BarProduct::with('compositions.product')->findOrFail($item['id']);
 
+                    // --- NOVA VALIDAÇÃO UNIFICADA ---
                     if ($product->is_combo) {
+                        // Se for combo, varre os itens da receita
                         foreach ($product->compositions as $comp) {
                             $filho = $comp->product;
                             $necessario = $comp->quantity * $item['quantity'];
 
                             if ($filho && $filho->manage_stock && $filho->stock_quantity < $necessario) {
-                                throw new \Exception("Estoque insuficiente para compor o combo! Falta: {$filho->name}");
+                                throw new \Exception("Estoque insuficiente para compor o combo! Falta: {$filho->name} (Precisa de {$necessario}, mas só tem {$filho->stock_quantity})");
                             }
                         }
                     } else {
+                        // Se for simples, mantém sua lógica original
                         if ($product->manage_stock && $product->stock_quantity < $item['quantity']) {
-                            throw new \Exception("Estoque insuficiente para: {$product->name}");
+                            throw new \Exception("Estoque insuficiente para: {$product->name} (Disponível: {$product->stock_quantity})");
                         }
                     }
+                    // --- FIM DA VALIDAÇÃO ---
 
                     BarSaleItem::create([
                         'bar_sale_id' => $sale->id,
@@ -97,22 +98,22 @@ class BarPosController extends Controller
                         'price_at_sale' => $product->sale_price
                     ]);
 
+                    // Ele vai baixar o estoque do item OU dos itens do combo automaticamente!
                     $product->baixarEstoque($item['quantity'], $sale->id);
                 }
 
-                // 4. INTEGRAÇÃO INDIVIDUAL COM O CAIXA
+                // 4. INTEGRAÇÃO COM O CAIXA
                 foreach ($request->payments as $pay) {
                     BarCashMovement::create([
-                        'bar_cash_session_id' => $session->id, // Caixa do operador atual
+                        'bar_cash_session_id' => $session->id,
                         'user_id'             => auth()->id(),
                         'bar_sale_id'         => $sale->id,
                         'type'                => 'venda',
                         'payment_method'      => $pay['method'],
                         'amount'              => $pay['value'],
-                        'description'         => "Venda Direta PDV #{$sale->id} (Operador: " . auth()->user()->name . ")"
+                        'description'         => "Venda Direta PDV #{$sale->id}"
                     ]);
 
-                    // Atualiza a gaveta física apenas se for dinheiro
                     if ($pay['method'] === 'dinheiro') {
                         $session->increment('expected_balance', $pay['value']);
                     }
@@ -120,7 +121,7 @@ class BarPosController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Venda finalizada no seu caixa com sucesso!'
+                    'message' => 'Venda finalizada e estoque atualizado!'
                 ]);
             });
         } catch (\Exception $e) {

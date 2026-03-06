@@ -75,7 +75,7 @@
                     {{-- VALOR CONTADO --}}
                     <div>
                         <label class="text-gray-500 uppercase text-[10px] font-black ml-2 mb-2 block tracking-widest">
-                            Valor total em caixa (Dinheiro + Digital)
+                            Valor total em caixa
                         </label>
                         <input type="number" name="actual_balance" id="actual_balance_input" step="0.01"
                             min="0" required placeholder="0,00" oninput="calcularDiferenca()"
@@ -162,38 +162,33 @@
      * Compara o valor contado apenas com o que deve existir em espécie.
      */
     function calcularDiferenca() {
-        // 🎯 O AJUSTE DE MESTRE:
-        // Somamos o Faturamento Líquido ($totalBruto) com o Fundo de Abertura.
-        const faturamentoTurno = {{ $totalBruto ?? 0 }};
-        const fundoAbertura = {{ $currentSession->opening_balance ?? 0 }};
-        const totalEsperadoSistema = faturamentoTurno + fundoAbertura;
+        // 🛡️ O "Pulo do Gato": Usamos apenas o saldo que deve estar na gaveta física
+        const esperadoEmEspecie = {{ $dinheiroGeral ?? 0 }};
 
         const input = document.getElementById('actual_balance_input');
         const contado = parseFloat(input.value) || 0;
+
         const display = document.getElementById('msg_diferenca');
 
-        // Se o campo estiver vazio ou zero
-        if (input.value === "" || input.value === "0") {
-            display.innerText = "DIGITE O TOTAL: VENDAS + TROCO (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
-                minimumFractionDigits: 2
-            }) + ")";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-orange-500 animate-pulse";
+        // Se o campo estiver vazio, limpa a mensagem
+        if (input.value === "") {
+            display.innerText = "";
             return;
         }
 
-        // Diferença contra o total absoluto (Vendas + Fundo)
-        const diferenca = contado - totalEsperadoSistema;
+        const diferenca = contado - esperadoEmEspecie;
 
         if (Math.abs(diferenca) < 0.01) {
-            display.innerText = "✅ VALOR TOTAL CONFERIDO";
-            display.className = "text-[10px] font-black uppercase tracking-widest text-green-500 font-bold";
+            display.innerText = "✅ VALOR EXATO NA GAVETA";
+            display.className = "text-[10px] font-black uppercase tracking-widest text-green-500";
         } else if (diferenca > 0) {
-            display.innerText = "➕ SOBRA GERAL: R$ " + diferenca.toLocaleString('pt-br', {
+            display.innerText = "➕ SOBRA NA GAVETA: R$ " + diferenca.toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-blue-400";
         } else {
-            display.innerText = "⚠️ FALTA NO TOTAL: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
+            // Se o contado for menor que o esperado em espécie
+            display.innerText = "⚠️ QUEBRA NA GAVETA: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-red-500";
