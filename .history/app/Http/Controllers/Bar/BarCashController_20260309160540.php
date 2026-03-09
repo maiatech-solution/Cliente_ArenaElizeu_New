@@ -263,7 +263,7 @@ class BarCashController extends Controller
      */
     public function close(Request $request)
     {
-        // 1. Validação do Supervisor (Mantido igual)
+        // 1. Validação do Supervisor (Mantido seu padrão)
         if (!$request->supervisor_email || !$request->supervisor_password) {
             return back()->with('error', '⚠️ Autorização necessária.');
         }
@@ -278,10 +278,11 @@ class BarCashController extends Controller
             return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
         }
 
-        // 2. Trava de Mesas Abertas (Mantido igual)
-        $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->count();
-        if ($mesasAbertas > 0) {
-            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas.");
+        // 2. Trava de Mesas Abertas
+        $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->get();
+        if ($mesasAbertas->count() > 0) {
+            $numeros = $mesasAbertas->pluck('identifier')->implode(', ');
+            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas ({$numeros}).");
         }
 
         $request->validate([
@@ -297,37 +298,40 @@ class BarCashController extends Controller
                 ->first();
 
             if (!$session) {
-                return back()->with('error', 'Erro: Você não tem um turno aberto.');
+                return back()->with('error', 'Erro: Você não tem um turno aberto para encerrar.');
             }
 
-            // 🎯 BUSCA TODAS AS MOVIMENTAÇÕES PARA CALCULAR O FÍSICO
+            // 🎯 BUSCA TODAS AS MOVIMENTAÇÕES
             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
 
-            // Dinheiro puro (Entradas)
+            // A. Separação por tipo e método
             $vCash = $movs->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
+            $vDigital = $movs->where('type', 'venda')->whereIn('payment_method', ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'])->sum('amount');
+
             $ref = $movs->where('type', 'reforco')->sum('amount');
-
-            // Dinheiro puro (Saídas)
             $san = $movs->where('type', 'sangria')->sum('amount');
-            $estCash = $movs->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
 
-            // 📊 CÁLCULO DO ESPERADO FÍSICO (O QUE TEM QUE ESTAR NA MÃO)
-            // Agora salvamos no banco o valor SEM o PIX.
+            $estCash = $movs->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
+            $estDigital = $movs->where('type', 'estorno')->whereIn('payment_method', ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'])->sum('amount');
+
+            // 📊 CÁLCULO DO ESPERADO FÍSICO (O que deve estar na gaveta)
             $totalEsperadoFisico = ($session->opening_balance + $vCash + $ref) - ($san + $estCash);
 
-            // 📊 FATURAMENTO TOTAL DO SISTEMA (DINHEIRO + DIGITAL)
-            $vDigital = $movs->where('type', 'venda')->whereIn('payment_method', ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'])->sum('amount');
-            $faturamentoTotal = ($vCash - $estCash) + ($vDigital);
+            // 📊 FATURAMENTO TOTAL LÍQUIDO (Vendas Reais)
+            $faturamentoLiquido = ($vCash - $estCash) + ($vDigital - $estDigital);
 
             // ⚖️ AUDITORIA FINAL
             $actual = $request->actual_balance;
             $difference = $actual - $totalEsperadoFisico;
 
-            // 💾 ATUALIZAR SESSÃO (Apenas colunas que já existem no seu print)
+            // Atualiza a sessão salvando cada valor em sua respectiva coluna
             $session->update([
                 'closing_balance' => $actual,
-                'expected_balance' => $totalEsperadoFisico, // AGORA SALVA 284.00 (O FÍSICO)
-                'total_vendas_sistema' => $faturamentoTotal, // SALVA 212.00 (O PLACAR DO DIA)
+                'expected_balance' => $totalEsperadoFisico, // Salva o esperado físico
+                'vendas_cash' => $vCash,         // Nova Coluna
+                'vendas_turno' => $faturamentoLiquido, // Nova Coluna
+                'reforcos' => $ref,             // Nova Coluna
+                'sangrias' => $san,             // Nova Coluna
                 'status' => 'closed',
                 'closed_at' => now(),
                 'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento autorizado por: {$supervisor->name}"

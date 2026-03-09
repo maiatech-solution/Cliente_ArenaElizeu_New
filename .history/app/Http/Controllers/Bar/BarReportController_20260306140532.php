@@ -184,7 +184,7 @@ class BarReportController extends Controller
     }
 
     /**
-     * RESUMO DE VENDAS DIÁRIAS (AJUSTADO PARA BATER COM O CAIXA)
+     * RESUMO DE VENDAS DIÁRIAS
      */
     public function daily(Request $request)
     {
@@ -192,37 +192,31 @@ class BarReportController extends Controller
         $startDate = \Carbon\Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = \Carbon\Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 🎯 O SEGREDO: Consultamos a BarCashMovement para bater com o relatório de auditoria
-        // Filtramos apenas o que é 'venda' ou 'estorno' para compor o faturamento real.
-        $movimentacoes = \App\Models\Bar\BarCashMovement::whereIn('type', ['venda', 'estorno'])
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->select(
-                DB::raw('DATE(created_at) as date'),
-                // Se for venda soma, se for estorno subtrai
-                DB::raw("SUM(CASE
-                    WHEN type = 'venda' AND description LIKE '%Mesa%' THEN amount
-                    WHEN type = 'estorno' AND description LIKE '%Mesa%' THEN -amount
-                    ELSE 0 END) as total_mesas"),
-                DB::raw("SUM(CASE
-                    WHEN type = 'venda' AND description NOT LIKE '%Mesa%' THEN amount
-                    WHEN type = 'estorno' AND description NOT LIKE '%Mesa%' THEN -amount
-                    ELSE 0 END) as total_pdv")
-            )
-            ->groupBy('date')
-            ->get();
+        // 1. Vendas de Mesas (Status: paid)
+        $vendasMesas = \App\Models\Bar\BarOrder::where('status', 'paid')
+            ->whereBetween('updated_at', [$startDate, $endDate])
+            ->select(DB::raw('DATE(updated_at) as date'), DB::raw('SUM(total_value) as total'))
+            ->groupBy('date')->get();
 
-        // 3. Monta o array com todos os dias do mês
+        // 2. Vendas de PDV (Status: pago) - AJUSTADO PARA O SEU BANCO
+        $vendasPDV = \App\Models\Bar\BarSale::where('status', 'pago')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->select(DB::raw('DATE(created_at) as date'), DB::raw('SUM(total_value) as total'))
+            ->groupBy('date')->get();
+
+        // 3. Monta o array com todos os dias do mês para o gráfico ficar bonito
         $datas = [];
-        $periodo = new \DatePeriod($startDate, new \DateInterval('P1D'), $endDate->copy()->addDay());
+        $periodo = new \DatePeriod($startDate, new \DateInterval('P1D'), $endDate->addDay());
 
         foreach ($periodo as $data) {
             $datas[$data->format('Y-m-d')] = ['mesas' => 0, 'pdv' => 0];
         }
 
-        // Alimenta o array com os dados vindos do fluxo de caixa
-        foreach ($movimentacoes as $m) {
-            $datas[$m->date]['mesas'] = $m->total_mesas;
-            $datas[$m->date]['pdv'] = $m->total_pdv;
+        foreach ($vendasMesas as $v) {
+            $datas[$v->date]['mesas'] = $v->total;
+        }
+        foreach ($vendasPDV as $v) {
+            $datas[$v->date]['pdv'] = $v->total;
         }
 
         return view('bar.reports.daily', compact('datas', 'mesReferencia'));

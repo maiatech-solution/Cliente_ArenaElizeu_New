@@ -39,40 +39,32 @@
                 </h3>
             </div>
 
-            <div class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 border-l-4 border-l-red-600 shadow-2xl">
-                @php
-                    $quebraTotal = 0;
-                    foreach ($sessoes as $s) {
-                        if ($s->status == 'closed') {
-                            // 🎯 BUSCA MOVIMENTAÇÕES PARA CALCULAR A QUEBRA REAL (SÓ DINHEIRO)
-                            $movsTopo = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $s->id)->get();
+           <div class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 border-l-4 border-l-red-600 shadow-2xl">
+    @php
+        $quebraTotal = 0;
+        foreach ($sessoes as $s) {
+            if ($s->status == 'closed') {
+                // 🎯 BUSCA MOVIMENTAÇÕES PARA CALCULAR A QUEBRA REAL (SÓ DINHEIRO)
+                $movsTopo = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $s->id)->get();
+                
+                $vCash = $movsTopo->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
+                $ref = $movsTopo->where('type', 'reforco')->sum('amount');
+                $san = $movsTopo->where('type', 'sangria')->sum('amount');
+                $estCash = $movsTopo->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
+                
+                $espFisico = ($s->opening_balance + $vCash + $ref) - ($san + $estCash);
+                $diffSessao = $s->closing_balance - $espFisico;
 
-                            $vCash = $movsTopo
-                                ->where('type', 'venda')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-                            $ref = $movsTopo->where('type', 'reforco')->sum('amount');
-                            $san = $movsTopo->where('type', 'sangria')->sum('amount');
-                            $estCash = $movsTopo
-                                ->where('type', 'estorno')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-
-                            $espFisico = $s->opening_balance + $vCash + $ref - ($san + $estCash);
-                            $diffSessao = $s->closing_balance - $espFisico;
-
-                            // Se faltou dinheiro na gaveta, soma na quebra
-                            if ($diffSessao < -0.01) {
-                                $quebraTotal += abs($diffSessao);
-                            }
-                        }
-                    }
-                @endphp
-                <p class="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Total de Quebras (Faltas)
-                </p>
-                <h3 class="text-3xl font-black text-white italic tracking-tighter">- R$
-                    {{ number_format($quebraTotal, 2, ',', '.') }}</h3>
-            </div>
+                // Se faltou dinheiro na gaveta, soma na quebra
+                if ($diffSessao < -0.01) {
+                    $quebraTotal += abs($diffSessao);
+                }
+            }
+        }
+    @endphp
+    <p class="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Total de Quebras (Faltas)</p>
+    <h3 class="text-3xl font-black text-white italic tracking-tighter">- R$ {{ number_format($quebraTotal, 2, ',', '.') }}</h3>
+</div>
 
             <div
                 class="bg-emerald-600 p-8 rounded-[2.5rem] shadow-xl shadow-emerald-600/20 flex flex-col justify-center group overflow-hidden relative">

@@ -43,28 +43,9 @@
                 @php
                     $quebraTotal = 0;
                     foreach ($sessoes as $s) {
-                        if ($s->status == 'closed') {
-                            // 🎯 BUSCA MOVIMENTAÇÕES PARA CALCULAR A QUEBRA REAL (SÓ DINHEIRO)
-                            $movsTopo = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $s->id)->get();
-
-                            $vCash = $movsTopo
-                                ->where('type', 'venda')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-                            $ref = $movsTopo->where('type', 'reforco')->sum('amount');
-                            $san = $movsTopo->where('type', 'sangria')->sum('amount');
-                            $estCash = $movsTopo
-                                ->where('type', 'estorno')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-
-                            $espFisico = $s->opening_balance + $vCash + $ref - ($san + $estCash);
-                            $diffSessao = $s->closing_balance - $espFisico;
-
-                            // Se faltou dinheiro na gaveta, soma na quebra
-                            if ($diffSessao < -0.01) {
-                                $quebraTotal += abs($diffSessao);
-                            }
+                        $diff = $s->closing_balance - $s->total_sistema_esperado;
+                        if ($s->status == 'closed' && $diff < -0.1) {
+                            $quebraTotal += abs($diff);
                         }
                     }
                 @endphp
@@ -107,27 +88,14 @@
                 <tbody class="divide-y divide-gray-800/50">
                     @forelse($sessoes as $index => $sessao)
                         @php
-                            // 🎯 BUSCA AS MOVIMENTAÇÕES EM TEMPO REAL PARA RECONSTRUIR O ESPERADO
-                            $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $sessao->id)->get();
-
-                            $vendasCash = $movs
-                                ->where('type', 'venda')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-                            $reforcosSessao = $movs->where('type', 'reforco')->sum('amount');
-                            $sangriasSessao = $movs->where('type', 'sangria')->sum('amount');
-                            $estornosCash = $movs
-                                ->where('type', 'estorno')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-
+                            // 🎯 O AJUSTE PARA O RELATÓRIO BATER:
                             // O "Esperado" para auditoria deve ser apenas o fluxo de DINHEIRO FÍSICO.
                             // (Abertura + Vendas Dinheiro + Reforços) - (Sangrias + Estornos Dinheiro)
                             $esperadoFisicoGaveta =
                                 $sessao->opening_balance +
-                                $vendasCash +
-                                $reforcosSessao -
-                                ($sangriasSessao + $estornosCash);
+                                ($sessao->vendas_cash ?? 0) +
+                                ($sessao->reforcos ?? 0) -
+                                ($sessao->sangrias ?? 0);
 
                             $diferenca = 0;
                             if ($sessao->status == 'closed') {

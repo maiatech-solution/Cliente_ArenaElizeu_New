@@ -1,4 +1,5 @@
 {{-- resources/views/bar/cash/modals/closing.blade.php --}}
+{{-- resources/views/bar/cash/modals/closing.blade.php --}}
 <div id="modalFecharCaixa"
     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
     <div
@@ -21,42 +22,42 @@
         <div class="p-8">
             {{-- 📊 DASHBOARD DE FECHAMENTO DETALHADO --}}
             <div class="space-y-4 mb-8">
-
+                
                 {{-- MATEMÁTICA DO CAIXA (Explicativo para o Gestor) --}}
                 <div class="bg-black/40 p-6 rounded-3xl border border-gray-800 shadow-inner space-y-3">
                     <span class="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-[0.2em] border-b border-gray-800 pb-2">
-                        🧮 CONFERÊNCIA FÍSICA (BALDE DE DINHEIRO)
+                        🧮 Composição da Gaveta (Dinheiro)
                     </span>
-
+                    
                     <div class="flex justify-between text-xs">
-                        <span class="text-gray-400 uppercase font-bold italic">Saldo de Abertura (Troco):</span>
+                        <span class="text-gray-400 uppercase font-bold italic">Troco Inicial (Abertura):</span>
                         <span class="text-white font-mono">R$ {{ number_format($currentSession->opening_balance ?? 0, 2, ',', '.') }}</span>
                     </div>
-
+                    
                     <div class="flex justify-between text-xs">
-                        <span class="text-gray-400 uppercase font-bold italic">(+) Vendas em Notas/Moedas:</span>
-                        <span class="text-white font-mono">R$ {{ number_format($vendasDinheiro ?? 0, 2, ',', '.') }}</span>
+                        <span class="text-gray-400 uppercase font-bold italic">(+) Vendas em Espécie:</span>
+                        <span class="text-white font-mono">R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}</span>
                     </div>
 
                     <div class="flex justify-between text-xs">
-                        <span class="text-gray-400 uppercase font-bold italic">(+) Reforços (Aportes):</span>
-                        <span class="text-green-500 font-mono font-bold">+ R$ {{ number_format($reforcos ?? 0, 2, ',', '.') }}</span>
+                        <span class="text-gray-400 uppercase font-bold italic">(+) Reforços:</span>
+                        <span class="text-green-500 font-mono font-bold">+ R$ {{ number_format($totalReforcos ?? 0, 2, ',', '.') }}</span>
                     </div>
 
                     <div class="flex justify-between text-xs border-b border-gray-800 pb-2">
-                        <span class="text-gray-400 uppercase font-bold italic">(-) Sangrias (Saídas):</span>
-                        <span class="text-red-500 font-mono font-bold">- R$ {{ number_format($sangrias ?? 0, 2, ',', '.') }}</span>
+                        <span class="text-gray-400 uppercase font-bold italic">(-) Sangrias:</span>
+                        <span class="text-red-500 font-mono font-bold">- R$ {{ number_format($totalSangrias ?? 0, 2, ',', '.') }}</span>
                     </div>
 
                     <div class="flex justify-between items-center pt-2">
                         <div>
                             <span class="text-[9px] font-black text-emerald-500 uppercase block tracking-widest leading-tight">
-                                TOTAL PARA TER NA MÃO<br>(DINHEIRO FÍSICO)
+                                Esperado em Espécie<br>(Gaveta Física)
                             </span>
                         </div>
                         <span class="text-white font-black text-3xl italic font-mono tracking-tighter">
-                            {{-- MATEMÁTICA: Abertura + Vendas Dinheiro + Reforços - Sangrias --}}
-                            R$ {{ number_format(($currentSession->opening_balance ?? 0) + ($vendasDinheiro ?? 0) + ($reforcos ?? 0) - ($sangrias ?? 0), 2, ',', '.') }}
+                            {{-- Fundo + Vendas Dinheiro + Reforços - Sangrias --}}
+                            R$ {{ number_format(($currentSession->opening_balance ?? 0) + ($dinheiroGeral ?? 0) + ($totalReforcos ?? 0) - ($totalSangrias ?? 0), 2, ',', '.') }}
                         </span>
                     </div>
                 </div>
@@ -65,7 +66,7 @@
                     {{-- DIGITAL (PIX e Cartões) --}}
                     <div class="bg-black/40 p-5 rounded-3xl border border-gray-800">
                         <span class="text-[9px] font-black text-cyan-400 uppercase block mb-1 tracking-widest leading-tight">
-                            PIX / CARTÕES<br>(DINHEIRO NO BANCO)
+                            Faturamento Digital<br>(PIX/Cartões)
                         </span>
                         <span class="text-blue-400 font-black text-2xl italic font-mono">
                             R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
@@ -75,7 +76,7 @@
                     {{-- BRUTO TOTAL (Vendas Líquidas) --}}
                     <div class="bg-orange-600/10 p-5 rounded-3xl border border-orange-600/20">
                         <span class="text-[9px] font-black text-orange-500 uppercase block mb-1 tracking-widest leading-tight">
-                            FATURAMENTO TOTAL<br>(RESUMO DE VENDAS)
+                            Faturamento Líquido<br>(Vendas do Turno)
                         </span>
                         <span class="text-green-500 font-black text-2xl italic font-mono">
                             R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
@@ -96,7 +97,7 @@
                     {{-- VALOR CONTADO --}}
                     <div>
                         <label class="text-gray-500 uppercase text-[10px] font-black ml-2 mb-2 block tracking-widest">
-                            Contagem Física da Gaveta
+                            Dinheiro contado na Gaveta (Físico)
                         </label>
                         <input type="number" name="actual_balance" id="actual_balance_input" step="0.01"
                             min="0" required placeholder="0,00" oninput="calcularDiferenca()"
@@ -125,7 +126,7 @@
                             Confirmação de Segurança
                         </span>
                         <p class="text-[8px] text-gray-600 mb-2 uppercase font-bold italic">
-                            Gestor: {{ auth()->user()->name }}. Confirme sua senha.
+                            Você está logado como {{ auth()->user()->name }}. Confirme sua senha.
                         </p>
                     @else
                         <span class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest animate-pulse">
@@ -173,48 +174,44 @@
         }
     }
 
+
     /**
      * 📊 CÁLCULO DE QUEBRA/SOBRA (Gaveta Física)
-     * Fórmula: Saldo Inicial + Vendas Cash + Reforços - Sangrias
+     * Compara o valor contado apenas com o que deve existir em espécie.
      */
     function calcularDiferenca() {
-        // Pegamos os valores individuais do Blade para montar a conta da gaveta
-        // Nota: Usamos as variáveis exatas que a Controller envia agora
-        const abertura = parseFloat("{{ $currentSession->opening_balance ?? 0 }}");
-        const vendasDinheiro = parseFloat("{{ $vendasDinheiro ?? 0 }}");
-        const reforcos = parseFloat("{{ $reforcos ?? 0 }}");
-        const sangrias = parseFloat("{{ $sangrias ?? 0 }}");
-
-        // O valor real que o sistema espera encontrar na gaveta física
-        const totalEsperadoNaGaveta = (abertura + vendasDinheiro + reforcos) - sangrias;
+        // 🎯 O AJUSTE DE MESTRE:
+        // Somamos o Faturamento Líquido ($totalBruto) com o Fundo de Abertura.
+        const faturamentoTurno = {{ $totalBruto ?? 0 }};
+        const fundoAbertura = {{ $currentSession->opening_balance ?? 0 }};
+        const totalEsperadoSistema = faturamentoTurno + fundoAbertura;
 
         const input = document.getElementById('actual_balance_input');
         const contado = parseFloat(input.value) || 0;
         const display = document.getElementById('msg_diferenca');
 
-        // Se o campo estiver vazio ou for zero, mostramos a dica do valor esperado
+        // Se o campo estiver vazio ou zero
         if (input.value === "" || input.value === "0") {
-            display.innerText = "CONTE O DINHEIRO DA GAVETA (ESPERADO: R$ " + totalEsperadoNaGaveta.toLocaleString(
-                'pt-br', {
-                    minimumFractionDigits: 2
-                }) + ")";
+            display.innerText = "DIGITE O TOTAL: VENDAS + TROCO (R$ " + totalEsperadoSistema.toLocaleString('pt-br', {
+                minimumFractionDigits: 2
+            }) + ")";
             display.className = "text-[10px] font-black uppercase tracking-widest text-orange-500 animate-pulse";
             return;
         }
 
-        // Diferença: O que o operador contou menos o que o sistema calculou
-        const diferenca = contado - totalEsperadoNaGaveta;
+        // Diferença contra o total absoluto (Vendas + Fundo)
+        const diferenca = contado - totalEsperadoSistema;
 
         if (Math.abs(diferenca) < 0.01) {
-            display.innerText = "✅ DINHEIRO EM ESPÉCIE CONFERIDO";
+            display.innerText = "✅ VALOR TOTAL CONFERIDO";
             display.className = "text-[10px] font-black uppercase tracking-widest text-green-500 font-bold";
         } else if (diferenca > 0) {
-            display.innerText = "➕ SOBRA NA GAVETA: R$ " + diferenca.toLocaleString('pt-br', {
+            display.innerText = "➕ SOBRA GERAL: R$ " + diferenca.toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-blue-400";
         } else {
-            display.innerText = "⚠️ FALTA NA GAVETA: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
+            display.innerText = "⚠️ FALTA NO TOTAL: R$ " + Math.abs(diferenca).toLocaleString('pt-br', {
                 minimumFractionDigits: 2
             });
             display.className = "text-[10px] font-black uppercase tracking-widest text-red-500";

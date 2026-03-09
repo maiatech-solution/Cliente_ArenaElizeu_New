@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Hash;
 class BarCashController extends Controller
 {
 
-
     /**
      * Tela Principal do Caixa (Ajustada para Multi-Caixa por Usuário)
      */
@@ -56,7 +55,6 @@ class BarCashController extends Controller
         $sangrias = 0;
         $reforcos = 0;
         $totalEstornado = 0;
-        $vendasDinheiro = 0; // Inicializada para evitar erro na view se não houver sessão
 
         if ($currentSession) {
             // 2. BUSCA TODAS AS MOVIMENTAÇÕES (Fonte única da verdade)
@@ -70,13 +68,13 @@ class BarCashController extends Controller
                 : $allMovements;
             $movements = $movements->sortByDesc('created_at');
 
-            // 3. MOVIMENTAÇÕES GERAIS (Limpas)
+            // 3. MOVIMENTAÇÕES GERAIS
             $reforcos = $allMovements->where('type', 'reforco')->sum('amount');
             $sangrias = $allMovements->where('type', 'sangria')->sum('amount');
 
-            // 🎯 MATEMÁTICA LÍQUIDA
+            // 🎯 MATEMÁTICA LÍQUIDA (Blindagem contra Maiúsculas/Minúsculas)
 
-            // A. DINHEIRO (Vendas brutas em espécie)
+            // A. DINHEIRO
             $vendasDinheiro = $allMovements->where('type', 'venda')->filter(function ($m) {
                 return strtolower($m->payment_method) === 'dinheiro';
             })->sum('amount');
@@ -96,16 +94,15 @@ class BarCashController extends Controller
                 return in_array(strtolower($m->payment_method), $metodosDigitais);
             })->sum('amount');
 
-            // 📊 CÁLCULOS DOS CARDS VISUAIS E MODAL
+            // 📊 CÁLCULOS DOS CARDS VISUAIS
 
-            // 1. Dinheiro na Gaveta (O que o Marlon deve ter em mãos)
-            // Fórmula: (Saldo Inicial + Vendas Dinheiro + Reforços) - (Sangrias + Estornos Dinheiro)
+            // 1. Dinheiro na Gaveta (Fundo + Vendas Dinheiro + Reforços - Sangrias - Estornos Dinheiro)
             $dinheiroGeral = ($currentSession->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
 
             // 2. Faturamento Digital Líquido (Vendas Digital - Estornos Digital)
             $faturamentoDigital = $vendasDigital - $estornosDigital;
 
-            // 3. FATURAMENTO TOTAL LÍQUIDO (Total de vendas reais do turno)
+            // 3. FATURAMENTO TOTAL LÍQUIDO (O que deve bater com o fechamento)
             $totalBruto = ($vendasDinheiro - $estornosDinheiro) + $faturamentoDigital;
 
             // 4. Total de Estornos (Informativo)
@@ -120,7 +117,6 @@ class BarCashController extends Controller
             'dinheiroGeral',
             'reforcos',
             'sangrias',
-            'vendasDinheiro', // 👈 Importante: Enviado para o detalhamento do modal
             'faturamentoDigital',
             'totalBruto',
             'totalEstornado',
@@ -259,11 +255,11 @@ class BarCashController extends Controller
     }
 
     /**
-     * Fechar o Caixa Individual (Atualizado para Auditoria Detalhada)
+     * Fechar o Caixa Individual (Ajustado para Multi-Caixa por Usuário)
      */
     public function close(Request $request)
     {
-        // 1. Validação do Supervisor (Mantido igual)
+        // 1. Validação do Supervisor (Mantido seu padrão)
         if (!$request->supervisor_email || !$request->supervisor_password) {
             return back()->with('error', '⚠️ Autorização necessária.');
         }
@@ -278,10 +274,11 @@ class BarCashController extends Controller
             return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
         }
 
-        // 2. Trava de Mesas Abertas (Mantido igual)
-        $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->count();
-        if ($mesasAbertas > 0) {
-            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas.");
+        // 2. Trava de Mesas Abertas
+        $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->get();
+        if ($mesasAbertas->count() > 0) {
+            $numeros = $mesasAbertas->pluck('identifier')->implode(', ');
+            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas ({$numeros}).");
         }
 
         $request->validate([
@@ -291,49 +288,48 @@ class BarCashController extends Controller
 
         // 3. Processamento do Fechamento
         return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $supervisor) {
+            // 🛡️ Busca sessão aberta com trava de atualização
             $session = \App\Models\Bar\BarCashSession::where('status', 'open')
                 ->where('user_id', auth()->id())
                 ->lockForUpdate()
                 ->first();
 
             if (!$session) {
-                return back()->with('error', 'Erro: Você não tem um turno aberto.');
+                return back()->with('error', 'Erro: Você não tem um turno aberto para encerrar.');
             }
 
-            // 🎯 BUSCA TODAS AS MOVIMENTAÇÕES PARA CALCULAR O FÍSICO
-            $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
+            // 🎯 O SEGREDO: BUSCA TODAS AS MOVIMENTAÇÕES DESSA SESSÃO (Fonte Única da Verdade)
+            $movimentacoes = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
 
-            // Dinheiro puro (Entradas)
-            $vCash = $movs->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
-            $ref = $movs->where('type', 'reforco')->sum('amount');
+            // A. Somatória das Vendas Totais (Bruto que entrou no sistema)
+            $vendasBrutasTotal = $movimentacoes->where('type', 'venda')->sum('amount');
 
-            // Dinheiro puro (Saídas)
-            $san = $movs->where('type', 'sangria')->sum('amount');
-            $estCash = $movs->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
+            // B. Somatória dos Estornos (Tudo o que foi anulado)
+            $totalEstornado = $movimentacoes->where('type', 'estorno')->sum('amount');
 
-            // 📊 CÁLCULO DO ESPERADO FÍSICO (O QUE TEM QUE ESTAR NA MÃO)
-            // Agora salvamos no banco o valor SEM o PIX.
-            $totalEsperadoFisico = ($session->opening_balance + $vCash + $ref) - ($san + $estCash);
+            // C. Reforços e Sangrias
+            $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
+            $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
 
-            // 📊 FATURAMENTO TOTAL DO SISTEMA (DINHEIRO + DIGITAL)
-            $vDigital = $movs->where('type', 'venda')->whereIn('payment_method', ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'])->sum('amount');
-            $faturamentoTotal = ($vCash - $estCash) + ($vDigital);
+            // 📊 CÁLCULO DO TOTAL ESPERADO (LÍQUIDO REAL)
+            // Fórmula: (Saldo Inicial + Vendas Brutas + Reforços) - (Sangrias + Estornos)
+            $totalEsperadoSistema = ($session->opening_balance + $vendasBrutasTotal + $reforcos) - ($sangrias + $totalEstornado);
 
             // ⚖️ AUDITORIA FINAL
-            $actual = $request->actual_balance;
-            $difference = $actual - $totalEsperadoFisico;
+            $actual = $request->actual_balance; // O que o usuário digitou no campo total
+            $difference = $actual - $totalEsperadoSistema;
 
-            // 💾 ATUALIZAR SESSÃO (Apenas colunas que já existem no seu print)
+            // Atualiza a sessão
             $session->update([
                 'closing_balance' => $actual,
-                'expected_balance' => $totalEsperadoFisico, // AGORA SALVA 284.00 (O FÍSICO)
-                'total_vendas_sistema' => $faturamentoTotal, // SALVA 212.00 (O PLACAR DO DIA)
+                'expected_balance' => $totalEsperadoSistema,
                 'status' => 'closed',
                 'closed_at' => now(),
                 'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento autorizado por: {$supervisor->name}"
             ]);
 
-            $msg = "Turno encerrado!";
+            $msg = "Turno de " . auth()->user()->name . " encerrado!";
+
             if (abs($difference) < 0.01) {
                 $msg .= " Caixa bateu perfeitamente!";
             } else {

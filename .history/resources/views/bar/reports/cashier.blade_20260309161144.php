@@ -43,28 +43,9 @@
                 @php
                     $quebraTotal = 0;
                     foreach ($sessoes as $s) {
-                        if ($s->status == 'closed') {
-                            // 🎯 BUSCA MOVIMENTAÇÕES PARA CALCULAR A QUEBRA REAL (SÓ DINHEIRO)
-                            $movsTopo = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $s->id)->get();
-
-                            $vCash = $movsTopo
-                                ->where('type', 'venda')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-                            $ref = $movsTopo->where('type', 'reforco')->sum('amount');
-                            $san = $movsTopo->where('type', 'sangria')->sum('amount');
-                            $estCash = $movsTopo
-                                ->where('type', 'estorno')
-                                ->where('payment_method', 'dinheiro')
-                                ->sum('amount');
-
-                            $espFisico = $s->opening_balance + $vCash + $ref - ($san + $estCash);
-                            $diffSessao = $s->closing_balance - $espFisico;
-
-                            // Se faltou dinheiro na gaveta, soma na quebra
-                            if ($diffSessao < -0.01) {
-                                $quebraTotal += abs($diffSessao);
-                            }
+                        $diff = $s->closing_balance - $s->total_sistema_esperado;
+                        if ($s->status == 'closed' && $diff < -0.1) {
+                            $quebraTotal += abs($diff);
                         }
                     }
                 @endphp
