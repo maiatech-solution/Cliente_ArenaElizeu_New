@@ -133,7 +133,7 @@
                             <span class="mx-1 text-gray-300">|</span>
 
                             {{-- Mantém a contagem de faltas --}}
-                            <span class="text-red-600">{{ $reservas->where('status', 'no_show')->count() }}</span>
+                            <span class="text-red-600">{{ $noShowCount }}</span>
                             <span class="text-[10px] font-normal text-red-500 uppercase">Faltas</span>
                         </div>
                     </div>

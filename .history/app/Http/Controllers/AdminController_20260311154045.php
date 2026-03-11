@@ -1111,6 +1111,77 @@ class AdminController extends Controller
     }
 
     public function reativarManutencao(\App\Http\Requests\UpdateReservaStatusRequest $request, $id)
+{
+    return DB::transaction(function () use ($request, $id) {
+
+        try {
+
+            $reserva = \App\Models\Reserva::findOrFail($id);
+            $decisao = $request->input('action');
+
+            if ($decisao === 'release_slot' || empty($decisao)) {
+
+                $reserva->update([
+                    'status' => 'free',
+                    'is_fixed' => true,
+                    'client_name' => 'Slot Livre',
+                    'client_contact' => 'N/A',
+                    'user_id' => null,
+                    'total_paid' => 0,
+                    'signal_value' => 0,
+                    'payment_status' => 'unpaid',
+                    'notes' => null,
+                ]);
+
+                return redirect()->back()
+                    ->with('success', '✅ Agenda liberada com sucesso!');
+            }
+
+            if ($decisao === 'restore_client') {
+
+                $notes = $reserva->notes ?? '';
+
+                if (preg_match('/###(?:FIN_)?BACKUP###(.*?)###END###/s', $notes, $matches)) {
+
+                    $dados = json_decode($matches[1], true);
+
+                    $nomeCliente = $dados['name'] ?? 'Cliente';
+                    $contato = $dados['contact'] ?? '';
+                    $userId = $dados['user_id'] ?? null;
+
+                    $reserva->update([
+                        'client_name' => $nomeCliente,
+                        'status' => 'confirmed',
+                        'user_id' => $userId,
+                        'client_contact' => $contato,
+                        'is_fixed' => false,
+                        'notes' => trim(preg_replace('/###(?:FIN_)?BACKUP###.*?###END###/s', '', $notes))
+                    ]);
+
+                    $this->recalcularFinanceiroReserva($reserva->id);
+
+                    return redirect()
+                        ->route('admin.reservas.show', $reserva->id)
+                        ->with('success', '👤 Cliente restaurado com sucesso!');
+                }
+
+                return redirect()->back()
+                    ->with('error', '⚠️ Backup não encontrado.');
+            }
+
+            return redirect()->back();
+
+        } catch (\Exception $e) {
+
+            \Log::error("Erro na reativação ID {$id}: " . $e->getMessage());
+
+            return redirect()->back()
+                ->with('error', 'Erro interno.');
+        }
+    });
+}
+
+    public function reativarManutencao(\App\Http\Requests\UpdateReservaStatusRequest $request, $id)
     {
         return DB::transaction(function () use ($request, $id) {
 
@@ -1119,23 +1190,35 @@ class AdminController extends Controller
                 $reserva = \App\Models\Reserva::findOrFail($id);
                 $decisao = $request->input('action');
 
+                /*
+            |--------------------------------------------------------------------------
+            | CASO 1 — LIBERAR SLOT
+            |--------------------------------------------------------------------------
+            */
+
                 if ($decisao === 'release_slot' || empty($decisao)) {
 
                     $reserva->update([
-                        'status' => 'free',
-                        'is_fixed' => true,
-                        'client_name' => 'Slot Livre',
+                        'status'         => 'free',
+                        'is_fixed'       => true,
+                        'client_name'    => 'Slot Livre',
                         'client_contact' => 'N/A',
-                        'user_id' => null,
-                        'total_paid' => 0,
-                        'signal_value' => 0,
+                        'user_id'        => null,
+                        'total_paid'     => 0,
+                        'signal_value'   => 0,
                         'payment_status' => 'unpaid',
-                        'notes' => null,
+                        'notes'          => null,
                     ]);
 
                     return redirect()->back()
-                        ->with('success', '✅ Agenda liberada com sucesso!');
+                        ->with('success', '✅ Agenda liberada com sucesso! O horário agora está vago.');
                 }
+
+                /*
+            |--------------------------------------------------------------------------
+            | CASO 2 — RESTAURAR CLIENTE
+            |--------------------------------------------------------------------------
+            */
 
                 if ($decisao === 'restore_client') {
 
@@ -1145,28 +1228,114 @@ class AdminController extends Controller
 
                         $dados = json_decode($matches[1], true);
 
-                        $nomeCliente = $dados['name'] ?? 'Cliente';
-                        $contato = $dados['contact'] ?? '';
-                        $userId = $dados['user_id'] ?? null;
+                        if (!$dados) {
+                            return redirect()->back()
+                                ->with('error', '⚠️ Erro: Dados de backup corrompidos.');
+                        }
+
+                        $nomeCliente      = $dados['name'] ?? 'Cliente';
+                        $valorOriginal    = (float) ($dados['total_paid_orig'] ?? 0);
+                        $valorTransferido = (float) ($dados['transfer_value'] ?? $valorOriginal);
+                        $acaoRealizada    = $dados['finance_action'] ?? 'refund';
+                        $contato          = $dados['contact'] ?? $reserva->client_contact;
+                        $userId           = $dados['user_id'] ?? $reserva->user_id;
+
+                        /*
+                    |--------------------------------------------------------------------------
+                    | RESTAURA CLIENTE
+                    |--------------------------------------------------------------------------
+                    */
 
                         $reserva->update([
-                            'client_name' => $nomeCliente,
-                            'status' => 'confirmed',
-                            'user_id' => $userId,
+                            'client_name'    => $nomeCliente,
+                            'status'         => 'confirmed',
+                            'user_id'        => $userId,
                             'client_contact' => $contato,
-                            'is_fixed' => false,
-                            'notes' => trim(preg_replace('/###(?:FIN_)?BACKUP###.*?###END###/s', '', $notes))
+                            'is_fixed'       => false,
+                            'notes'          => trim(preg_replace('/###(?:FIN_)?BACKUP###.*?###END###/s', '', $notes))
                         ]);
 
-                        $this->recalcularFinanceiroReserva($reserva->id);
+                        /*
+                    |--------------------------------------------------------------------------
+                    | TRATAMENTO FINANCEIRO
+                    |--------------------------------------------------------------------------
+                    */
+
+                        if ($acaoRealizada === 'refund') {
+
+                            $saldoAtual = DB::table('financial_transactions')
+                                ->where('reserva_id', $reserva->id)
+                                ->sum('amount');
+
+                            // ⚠️ NÃO criar estorno se o saldo já for <= 0
+                            if ($saldoAtual > 0) {
+
+                                $jaExisteEstorno = DB::table('financial_transactions')
+                                    ->where('reserva_id', $reserva->id)
+                                    ->where('description', 'like', 'ESTORNO AUTOMÁTICO (Reativação manutenção%')
+                                    ->exists();
+
+                                if (!$jaExisteEstorno) {
+
+                                    FinancialTransaction::create([
+                                        'reserva_id'     => $reserva->id,
+                                        'arena_id'       => $reserva->arena_id,
+                                        'user_id'        => $userId,
+                                        'manager_id'     => auth()->id(),
+                                        'amount'         => -$saldoAtual,
+                                        'type'           => 'refund',
+                                        'payment_method' => 'cash_out',
+                                        'description'    => "ESTORNO AUTOMÁTICO (Reativação manutenção #{$reserva->id})",
+                                        'paid_at'        => now(),
+                                    ]);
+                                }
+                            }
+                        }
+
+                        /*
+                    |--------------------------------------------------------------------------
+                    | WHATSAPP
+                    |--------------------------------------------------------------------------
+                    */
+
+                        $dataReserva = date('d/m', strtotime($reserva->date));
+                        $horaReserva = date('H:i', strtotime($reserva->start_time));
+
+                        $msg = "Boas notícias {$nomeCliente}! 👋\n\n";
+                        $msg .= "A manutenção foi concluída e seu horário ";
+                        $msg .= "({$dataReserva} às {$horaReserva}) foi REATIVADO! 🏟️";
+
+                        if ($valorOriginal > 0) {
+
+                            $valorF = number_format($valorTransferido, 2, ',', '.');
+
+                            if ($acaoRealizada === 'credit') {
+
+                                $msg .= "\n\n⭐ *PAGAMENTO:* ";
+                                $msg .= "O valor de R$ {$valorF} foi movido como crédito ";
+                                $msg .= "para seu próximo jogo. Para hoje o pagamento será integral.";
+                            } else {
+
+                                $msg .= "\n\n💰 *PAGAMENTO:* ";
+                                $msg .= "Como realizamos o estorno do sinal, ";
+                                $msg .= "o pagamento integral fica pendente para o momento do jogo.";
+                            }
+                        }
+
+                        $waLink = "https://wa.me/55"
+                            . preg_replace('/\D/', '', $contato)
+                            . "?text=" . urlencode($msg);
 
                         return redirect()
                             ->route('admin.reservas.show', $reserva->id)
-                            ->with('success', '👤 Cliente restaurado com sucesso!');
+                            ->with([
+                                'success'       => '👤 Cliente restaurado com sucesso!',
+                                'whatsapp_link' => $waLink
+                            ]);
                     }
 
                     return redirect()->back()
-                        ->with('error', '⚠️ Backup não encontrado.');
+                        ->with('error', '⚠️ Falha: Backup não encontrado nas notas.');
                 }
 
                 return redirect()->back();
@@ -1175,36 +1344,9 @@ class AdminController extends Controller
                 \Log::error("Erro na reativação ID {$id}: " . $e->getMessage());
 
                 return redirect()->back()
-                    ->with('error', 'Erro interno.');
+                    ->with('error', '❌ Erro interno: ' . $e->getMessage());
             }
         });
-    }
-
-    private function recalcularFinanceiroReserva($reservaId)
-    {
-        $total = DB::table('financial_transactions')
-            ->where('reserva_id', $reservaId)
-            ->sum('amount');
-
-        $reserva = \App\Models\Reserva::find($reservaId);
-
-        if (!$reserva) {
-            return;
-        }
-
-        $total = max(0, $total);
-
-        $reserva->total_paid = $total;
-
-        if ($total <= 0) {
-            $reserva->payment_status = 'unpaid';
-        } elseif ($total >= $reserva->price) {
-            $reserva->payment_status = 'paid';
-        } else {
-            $reserva->payment_status = 'partial';
-        }
-
-        $reserva->save();
     }
 
     public function sincronizarDadosUsuario($id)

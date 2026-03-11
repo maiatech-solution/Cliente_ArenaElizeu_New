@@ -93,11 +93,11 @@ class PaymentController extends Controller
             ->orderBy('paid_at', 'desc')
             ->get();
 
-        // 3. IDs de reservas com movimentação hoje
+        // 3. IDs de reservas com movimentação hoje (importante para mostrar reservas de outras datas pagas hoje)
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
 
         // 4. Consulta de Reservas com Filtro de Status 🛡️
-        // 🚫 Ignora Rejeitadas, Canceladas e Horários em Manutenção para não poluir o financeiro
+        // 🚫 Ignora Rejeitadas, Canceladas e Horários em Manutenção
         $query = Reserva::with(['user', 'arena', 'transactions'])
             ->whereNotIn('status', ['rejected', 'cancelled', 'maintenance']);
 
@@ -126,24 +126,20 @@ class PaymentController extends Controller
             ->orderBy($filterDebts ? 'date' : 'start_time', 'asc')
             ->get();
 
-        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (VERSÃO BLINDADA POR DATA)
+        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA
         foreach ($reservas as $reserva) {
-            // Soma apenas o que entrou NO DIA consultado para não misturar créditos futuros no caixa de hoje
-            $diretas = (float) $reserva->transactions()
-                ->whereDate('paid_at', $dateObject)
-                ->sum('amount');
-
-            // Busca estornos/créditos desvinculados que mencionam o #ID apenas na data selecionada
+            $diretas = (float) $reserva->transactions->sum('amount');
             $desvinculadas = (float) FinancialTransaction::whereNull('reserva_id')
                 ->where('arena_id', $reserva->arena_id)
-                ->whereDate('paid_at', $dateObject)
                 ->where('description', 'LIKE', "%#{$reserva->id}%")
                 ->sum('amount');
 
             $realPaid = round($diretas + $desvinculadas, 2);
 
-            // Atualizamos o total_paid apenas em memória para exibição correta no dashboard
-            $reserva->total_paid = $realPaid;
+            if (round((float)$reserva->total_paid, 2) !== $realPaid) {
+                $reserva->total_paid = $realPaid;
+                \DB::table('reservas')->where('id', $reserva->id)->update(['total_paid' => $realPaid]);
+            }
         }
 
         // 5. Saldo Líquido Real do Dia

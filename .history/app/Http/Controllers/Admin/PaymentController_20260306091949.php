@@ -63,9 +63,9 @@ class PaymentController extends Controller
     }
 
 
+
     /**
      * Dashboard de Caixa e Histórico
-     * Atualizado para ocultar Rejeitadas, Canceladas e Manutenções 🛡️
      */
     public function index(Request $request)
     {
@@ -82,24 +82,29 @@ class PaymentController extends Controller
         // 🕵️ LOG DE ENTRADA DO CAIXA
         \Log::info("=== MONITOR DE CAIXA ===");
         \Log::info("Data Selecionada: " . $selectedDateString);
+        \Log::info("Arena Selecionada: " . ($selectedArenaId ?? 'Todas'));
 
         // 1. GLOBAL: Transações de todas as arenas (Para os cards laterais não zerarem)
         $allTransactionsOfDay = FinancialTransaction::whereDate('paid_at', $dateObject)->get();
 
-        // 2. FILTRADO: Transações da arena selecionada
+        // 2. FILTRADO: Transações da arena selecionada com LOG de Auditoria
         $financialTransactions = FinancialTransaction::whereDate('paid_at', $dateObject)
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->with(['reserva', 'manager', 'payer', 'arena'])
             ->orderBy('paid_at', 'desc')
             ->get();
 
+        // 🕵️ DEBUG DE TRANSAÇÕES NO LOG
+        \Log::info("Transações encontradas no BD: " . $financialTransactions->count());
+        foreach ($financialTransactions as $ft) {
+            \Log::info("ID: {$ft->id} | Valor: {$ft->amount} | Tipo: {$ft->type} | Arena: {$ft->arena_id} | Reserva ID: " . ($ft->reserva_id ?? 'NULL'));
+        }
+
         // 3. IDs de reservas com movimentação hoje
         $reservaIdsComMovimentacaoHoje = $financialTransactions->pluck('reserva_id')->filter()->unique();
 
-        // 4. Consulta de Reservas com Filtro de Status 🛡️
-        // 🚫 Ignora Rejeitadas, Canceladas e Horários em Manutenção para não poluir o financeiro
-        $query = Reserva::with(['user', 'arena', 'transactions'])
-            ->whereNotIn('status', ['rejected', 'cancelled', 'maintenance']);
+        // 4. Consulta de Reservas
+        $query = Reserva::with(['user', 'arena', 'transactions']);
 
         if ($filterDebts) {
             $query->where('status', 'completed')->whereIn('payment_status', ['unpaid', 'partial']);
@@ -113,7 +118,6 @@ class PaymentController extends Controller
         }
 
         if ($selectedArenaId) $query->where('arena_id', $selectedArenaId);
-
         if ($searchTerm) {
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('client_name', 'LIKE', "%$searchTerm%")
@@ -126,28 +130,29 @@ class PaymentController extends Controller
             ->orderBy($filterDebts ? 'date' : 'start_time', 'asc')
             ->get();
 
-        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (VERSÃO BLINDADA POR DATA)
+        // 🚀 4.1 SINCRONIZAÇÃO FORÇADA (VERSÃO CORRIGIDA)
+        // Agora considera transações vinculadas + estornos/no-shows desvinculados (descrição com #ID)
         foreach ($reservas as $reserva) {
-            // Soma apenas o que entrou NO DIA consultado para não misturar créditos futuros no caixa de hoje
-            $diretas = (float) $reserva->transactions()
-                ->whereDate('paid_at', $dateObject)
-                ->sum('amount');
+            $diretas = (float) $reserva->transactions->sum('amount');
 
-            // Busca estornos/créditos desvinculados que mencionam o #ID apenas na data selecionada
+            // Busca estornos manuais ou automáticos que mencionam o ID da reserva na descrição
             $desvinculadas = (float) FinancialTransaction::whereNull('reserva_id')
                 ->where('arena_id', $reserva->arena_id)
-                ->whereDate('paid_at', $dateObject)
                 ->where('description', 'LIKE', "%#{$reserva->id}%")
                 ->sum('amount');
 
             $realPaid = round($diretas + $desvinculadas, 2);
 
-            // Atualizamos o total_paid apenas em memória para exibição correta no dashboard
-            $reserva->total_paid = $realPaid;
+            if (round((float)$reserva->total_paid, 2) !== $realPaid) {
+                \Log::info("Sincronizando Reserva #{$reserva->id}: Antigo: {$reserva->total_paid} | Novo Real: {$realPaid}");
+                $reserva->total_paid = $realPaid;
+                \DB::table('reservas')->where('id', $reserva->id)->update(['total_paid' => $realPaid]);
+            }
         }
 
         // 5. Saldo Líquido Real do Dia
         $totalRecebidoDiaLiquido = round((float) $financialTransactions->sum('amount'), 2);
+        \Log::info("Saldo Líquido Final Calculado: " . $totalRecebidoDiaLiquido);
 
         // 6. Lógica de Status do Caixa e Histórico
         $cashierRecord = Cashier::where('date', $selectedDateString)
@@ -171,7 +176,7 @@ class PaymentController extends Controller
             ];
         });
 
-        // 🚫 8. CONTADOR DE FALTAS (No-Show)
+        // 🚫 8. CORREÇÃO DO NO-SHOW: Conta logs de falta
         $noShowCount = $allTransactionsOfDay
             ->when($selectedArenaId, fn($q) => $q->where('arena_id', $selectedArenaId))
             ->filter(function ($t) {
@@ -686,7 +691,7 @@ class PaymentController extends Controller
      */
     public function storeAvulsa(Request $request)
     {
-        // 1. Validação: arena_id é obrigatório
+        // 1. Validação: arena_id é obrigatório para saber de qual caixa sai o dinheiro
         $validated = $request->validate([
             'date'           => 'required|date',
             'type'           => 'required|in:in,out',
@@ -699,25 +704,9 @@ class PaymentController extends Controller
         ]);
 
         try {
-            // 🚀 2. BLINDAGEM ANTI-DUPLICIDADE (Double-Click)
-            // Calculamos o valor final antes para checar no banco
-            $checkAmount = $validated['type'] === 'out' ? -abs($validated['amount']) : abs($validated['amount']);
-
-            // Verifica se já existe uma transação idêntica nos últimos 10 segundos
-            $isDuplicate = FinancialTransaction::where('arena_id', $validated['arena_id'])
-                ->where('amount', $checkAmount)
-                ->where('description', 'LIKE', '%' . $validated['description'] . '%')
-                ->where('created_at', '>=', now()->subSeconds(10))
-                ->exists();
-
-            if ($isDuplicate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Ação bloqueada: Esta movimentação já foi registrada (clique duplo detectado).'
-                ], 422);
-            }
-
-            // 3. TRAVA DE CAIXA FECHADO
+            // 2. 🎯 TRAVA DE SEGURANÇA AJUSTADA:
+            // Agora validamos se o caixa daquela arena específica está fechado.
+            // Isso evita que um lançamento avulso "quebre" a auditoria de um caixa já lacrado.
             if (\App\Http\Controllers\FinanceiroController::isCashClosed($validated['date'], $validated['arena_id'])) {
                 return response()->json([
                     'success' => false,
@@ -725,21 +714,24 @@ class PaymentController extends Controller
                 ], 403);
             }
 
-            // 4. Lógica do Valor: Entrada (+) ou Saída (-)
-            $finalAmount = $checkAmount;
+            // 3. Lógica do Valor: Entrada (+) ou Saída (-)
+            $finalAmount = $validated['type'] === 'out'
+                ? -abs($validated['amount'])
+                : abs($validated['amount']);
 
-            // 5. Identificação do tipo para o banco de dados
+            // 4. Identificação do tipo para o banco de dados
             $transactionType = $validated['type'] === 'out' ? 'sangria' : 'reforco';
             $prefixLabel = $validated['type'] === 'out' ? '🔴 SANGRIA: ' : '🟢 REFORÇO: ';
 
-            // 6. Criação da transação
+            // 5. Criação da transação
             FinancialTransaction::create([
-                'arena_id'       => $validated['arena_id'],
+                'arena_id'       => $validated['arena_id'], // ✅ Vínculo obrigatório
                 'manager_id'     => Auth::id(),
                 'amount'         => $finalAmount,
                 'type'           => $transactionType,
                 'payment_method' => $validated['payment_method'],
                 'description'    => $prefixLabel . $validated['description'],
+                // Registra a data do caixa com o horário real da operação para timeline correta
                 'paid_at'        => $validated['date'] . ' ' . now()->format('H:i:s'),
             ]);
 
@@ -751,7 +743,7 @@ class PaymentController extends Controller
             Log::error("Erro na movimentação avulsa: " . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erro interno ao processar movimentação.'
+                'message' => 'Erro interno ao processar movimentação: ' . $e->getMessage()
             ], 500);
         }
     }

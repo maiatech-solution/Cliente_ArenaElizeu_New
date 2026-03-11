@@ -79,6 +79,7 @@ class FinancialTransaction extends Model
                 ? \Carbon\Carbon::parse($transaction->paid_at)->toDateString()
                 : now()->toDateString();
 
+            // Verifica se o caixa daquela ARENA específica está fechado
             $isClosed = \App\Models\Cashier::where('date', $dateToCheck)
                 ->where('arena_id', $transaction->arena_id)
                 ->where('status', 'closed')
@@ -87,39 +88,6 @@ class FinancialTransaction extends Model
             if ($isClosed) {
                 throw new \Exception("Bloqueio de Segurança: Não é possível excluir ou estornar movimentações de uma arena com caixa encerrado.");
             }
-        });
-
-        /*
-    |--------------------------------------------------------------------------
-    | ⭐ SINCRONIZAÇÃO AUTOMÁTICA DA RESERVA
-    |--------------------------------------------------------------------------
-    */
-
-        static::created(function ($transaction) {
-
-            if (!$transaction->reserva_id) {
-                return;
-            }
-
-            $reserva = \App\Models\Reserva::find($transaction->reserva_id);
-
-            if (!$reserva) {
-                return;
-            }
-
-            $total = \DB::table('financial_transactions')
-                ->where('reserva_id', $reserva->id)
-                ->sum('amount');
-
-            $total = max(0, $total);
-
-            $reserva->update([
-                'total_paid' => $total,
-                'signal_value' => $total,
-                'payment_status' => $total >= $reserva->price
-                    ? 'paid'
-                    : ($total > 0 ? 'partial' : 'unpaid')
-            ]);
         });
     }
 
