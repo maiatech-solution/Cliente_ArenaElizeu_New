@@ -22,9 +22,8 @@ class BarCashController extends Controller
     {
         $date = $request->get('date', date('Y-m-d'));
         $user = auth()->user();
-        $isAdmin = in_array($user->role, ['admin', 'gestor']);
 
-        // 1. Busca a sessão aberta específica DESTE usuário (Lógica atual)
+        // 1. Busca a sessão aberta específica DESTE usuário
         $openSession = BarCashSession::where('status', 'open')
             ->where('user_id', $user->id)
             ->first();
@@ -38,26 +37,14 @@ class BarCashController extends Controller
             }
         }
 
-        // Define a sessão atual para exibição dos cards
         $currentSession = ($openSession && Carbon::parse($openSession->opened_at)->format('Y-m-d') == $date)
             ? $openSession
             : BarCashSession::whereDate('opened_at', $date)
-            ->when(!$isAdmin, function ($query) use ($user) {
+            ->when(!in_array($user->role, ['admin', 'gestor']), function ($query) use ($user) {
                 return $query->where('user_id', $user->id);
             })
             ->latest()
             ->first();
-
-        // 🔍 NOVIDADE: Busca sessões FECHADAS para a lista de Auditoria/Reabertura
-        // Se for admin, vê todos os fechados do dia. Se for operador, vê apenas os seus fechados.
-        $sessionsClosed = BarCashSession::with('user')
-            ->where('status', 'closed')
-            ->whereDate('opened_at', $date)
-            ->when(!$isAdmin, function ($query) use ($user) {
-                return $query->where('user_id', $user->id);
-            })
-            ->orderBy('closed_at', 'desc')
-            ->get();
 
         $mesasAbertasCount = BarTable::where('status', 'occupied')->count();
 
@@ -69,7 +56,7 @@ class BarCashController extends Controller
         $sangrias = 0;
         $reforcos = 0;
         $totalEstornado = 0;
-        $vendasDinheiro = 0;
+        $vendasDinheiro = 0; // Inicializada para evitar erro na view se não houver sessão
 
         if ($currentSession) {
             // 2. BUSCA TODAS AS MOVIMENTAÇÕES (Fonte única da verdade)
@@ -78,17 +65,18 @@ class BarCashController extends Controller
                 ->get();
 
             // Histórico visual (Colaborador vê o dele, Gestor vê a sessão)
-            $movements = (!$isAdmin)
+            $movements = (!in_array($user->role, ['admin', 'gestor']))
                 ? $allMovements->where('user_id', $user->id)
                 : $allMovements;
-
             $movements = $movements->sortByDesc('created_at');
 
-            // 3. MOVIMENTAÇÕES GERAIS
+            // 3. MOVIMENTAÇÕES GERAIS (Limpas)
             $reforcos = $allMovements->where('type', 'reforco')->sum('amount');
             $sangrias = $allMovements->where('type', 'sangria')->sum('amount');
 
             // 🎯 MATEMÁTICA LÍQUIDA
+
+            // A. DINHEIRO (Vendas brutas em espécie)
             $vendasDinheiro = $allMovements->where('type', 'venda')->filter(function ($m) {
                 return strtolower($m->payment_method) === 'dinheiro';
             })->sum('amount');
@@ -97,6 +85,7 @@ class BarCashController extends Controller
                 return strtolower($m->payment_method) === 'dinheiro';
             })->sum('amount');
 
+            // B. DIGITAL (PIX, Cartões, etc)
             $metodosDigitais = ['pix', 'credito', 'debito', 'cartao', 'misto', 'crédito', 'débito'];
 
             $vendasDigital = $allMovements->where('type', 'venda')->filter(function ($m) use ($metodosDigitais) {
@@ -107,23 +96,31 @@ class BarCashController extends Controller
                 return in_array(strtolower($m->payment_method), $metodosDigitais);
             })->sum('amount');
 
-            // 📊 CÁLCULOS DOS CARDS
+            // 📊 CÁLCULOS DOS CARDS VISUAIS E MODAL
+
+            // 1. Dinheiro na Gaveta (O que o Marlon deve ter em mãos)
+            // Fórmula: (Saldo Inicial + Vendas Dinheiro + Reforços) - (Sangrias + Estornos Dinheiro)
             $dinheiroGeral = ($currentSession->opening_balance + $vendasDinheiro + $reforcos) - ($sangrias + $estornosDinheiro);
+
+            // 2. Faturamento Digital Líquido (Vendas Digital - Estornos Digital)
             $faturamentoDigital = $vendasDigital - $estornosDigital;
+
+            // 3. FATURAMENTO TOTAL LÍQUIDO (Total de vendas reais do turno)
             $totalBruto = ($vendasDinheiro - $estornosDinheiro) + $faturamentoDigital;
+
+            // 4. Total de Estornos (Informativo)
             $totalEstornado = $estornosDinheiro + $estornosDigital;
         }
 
         return view('bar.cash.index', compact(
             'currentSession',
             'openSession',
-            'sessionsClosed', // 👈 Variável enviada para a lista de reabertura
             'movements',
             'date',
             'dinheiroGeral',
             'reforcos',
             'sangrias',
-            'vendasDinheiro',
+            'vendasDinheiro', // 👈 Importante: Enviado para o detalhamento do modal
             'faturamentoDigital',
             'totalBruto',
             'totalEstornado',
@@ -195,56 +192,24 @@ class BarCashController extends Controller
     }
 
     /**
-     * 🔓 REABRIR TURNO (AUDITORIA DE GESTOR)
+     * Reabrir um caixa fechado (Ação de Gerência)
      */
-    public function reopen(Request $request)
+    public function reopen($id)
     {
-        // 1. Validação de Credenciais do Gestor (Segurança de Auditoria)
-        if (!$request->supervisor_email || !$request->supervisor_password) {
-            return back()->with('error', '⚠️ Autorização necessária: Credenciais não detectadas.');
+        $hasOpen = BarCashSession::where('status', 'open')->exists();
+        if ($hasOpen) {
+            return back()->with('error', 'Já existe um caixa aberto! Feche o atual antes de reabrir este.');
         }
 
-        $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
+        $session = BarCashSession::findOrFail($id);
 
-        if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
-            return back()->with('error', '⚠️ Falha na autorização: Senha do gestor incorreta.');
-        }
-
-        if (!in_array($supervisor->role, ['admin', 'gestor'])) {
-            return back()->with('error', '⚠️ Acesso negado: Somente gestores podem reabrir turnos.');
-        }
-
-        // 2. Busca a Sessão pelo ID vindo do Modal (Campo oculto session_id)
-        $session = BarCashSession::findOrFail($request->session_id);
-
-        // 3. Trava de Segurança Multi-Caixa:
-        // O operador dono desta sessão já abriu um novo caixa "atropelando" este?
-        $hasOtherOpen = BarCashSession::where('user_id', $session->user_id)
-            ->where('status', 'open')
-            ->exists();
-
-        if ($hasOtherOpen) {
-            return back()->with('error', '⚠️ Bloqueio: Este operador já possui um novo turno aberto hoje. Feche o atual antes de reabrir o anterior.');
-        }
-
-        // 4. Executa a Reabertura dos Dados
         $session->update([
             'status' => 'open',
             'closed_at' => null,
-            'closing_balance' => null, // Reseta a contagem manual feita no fechamento
+            'closing_balance' => null,
         ]);
 
-        // 5. Log de Movimentação (Para registro no histórico do turno)
-        BarCashMovement::create([
-            'bar_cash_session_id' => $session->id,
-            'user_id' => auth()->id(),
-            'type' => 'reforco', // Usamos tipo reforço com valor 0 para marcar o evento
-            'amount' => 0,
-            'description' => "SESSÃO REABERTA POR GESTOR | POR: {$supervisor->name}",
-            'payment_method' => 'SISTEMA'
-        ]);
-
-        return back()->with('success', "O turno de {$session->user->name} foi reaberto com sucesso!");
+        return back()->with('success', 'Caixa reaberto com sucesso!');
     }
 
     /**

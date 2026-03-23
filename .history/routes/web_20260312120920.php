@@ -287,7 +287,7 @@ Route::middleware(['auth', 'gestor'])->prefix('bar')->name('bar.')->group(functi
         Route::post('/abrir', [BarCashController::class, 'open'])->name('open');
         Route::post('/movimentar', [BarCashController::class, 'storeMovement'])->name('movement');
         Route::post('/fechar', [BarCashController::class, 'close'])->name('close');
-        Route::post('/reabrir', [BarCashController::class, 'reopen'])->middleware(['role:admin,gestor'])->name('reopen');
+        Route::post('/reabrir/{id}', [BarCashController::class, 'reopen'])->middleware(['role:admin,gestor'])->name('reopen');
     });
 
     // 👥 Gestão de Equipe Bar

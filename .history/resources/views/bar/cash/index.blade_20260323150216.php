@@ -581,39 +581,6 @@
             }
         }
 
-        /**
-         * 🔓 Lógica de Reabertura (Auditoria)
-         */
-        function prepararReabertura(id, nome) {
-            const modal = document.getElementById('modalReabrirCaixa');
-            const info = document.getElementById('infoReabertura');
-            const inputId = document.getElementById('reopen_session_id');
-
-            if (modal && info && inputId) {
-                inputId.value = id;
-                info.innerText = "ATENÇÃO: Você está reabrindo o caixa de " + nome +
-                    ". Isso anulará o fechamento anterior e permitirá novos lançamentos.";
-                modal.classList.remove('hidden');
-            }
-        }
-
-        function executarReabertura() {
-            const passVisivel = document.getElementById('password_reabertura_visivel').value;
-            const passHidden = document.getElementById('reopen_supervisor_password_hidden');
-            const form = document.getElementById('formReopen');
-
-            if (!passVisivel || passVisivel.trim() === "") {
-                alert("⚠️ SENHA NECESSÁRIA\nDigite sua senha de gestor para autorizar a reabertura.");
-                return;
-            }
-
-            passHidden.value = passVisivel;
-            form.submit();
-        }
-
-        window.prepararReabertura = prepararReabertura;
-        window.executarReabertura = executarReabertura;
-
         // Exporta para o escopo global
         window.tentarEncerrarTurno = tentarEncerrarTurno;
         window.openModalMovement = openModalMovement;

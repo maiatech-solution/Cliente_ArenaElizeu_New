@@ -195,56 +195,24 @@ class BarCashController extends Controller
     }
 
     /**
-     * 🔓 REABRIR TURNO (AUDITORIA DE GESTOR)
+     * Reabrir um caixa fechado (Ação de Gerência)
      */
-    public function reopen(Request $request)
+    public function reopen($id)
     {
-        // 1. Validação de Credenciais do Gestor (Segurança de Auditoria)
-        if (!$request->supervisor_email || !$request->supervisor_password) {
-            return back()->with('error', '⚠️ Autorização necessária: Credenciais não detectadas.');
+        $hasOpen = BarCashSession::where('status', 'open')->exists();
+        if ($hasOpen) {
+            return back()->with('error', 'Já existe um caixa aberto! Feche o atual antes de reabrir este.');
         }
 
-        $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
+        $session = BarCashSession::findOrFail($id);
 
-        if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
-            return back()->with('error', '⚠️ Falha na autorização: Senha do gestor incorreta.');
-        }
-
-        if (!in_array($supervisor->role, ['admin', 'gestor'])) {
-            return back()->with('error', '⚠️ Acesso negado: Somente gestores podem reabrir turnos.');
-        }
-
-        // 2. Busca a Sessão pelo ID vindo do Modal (Campo oculto session_id)
-        $session = BarCashSession::findOrFail($request->session_id);
-
-        // 3. Trava de Segurança Multi-Caixa:
-        // O operador dono desta sessão já abriu um novo caixa "atropelando" este?
-        $hasOtherOpen = BarCashSession::where('user_id', $session->user_id)
-            ->where('status', 'open')
-            ->exists();
-
-        if ($hasOtherOpen) {
-            return back()->with('error', '⚠️ Bloqueio: Este operador já possui um novo turno aberto hoje. Feche o atual antes de reabrir o anterior.');
-        }
-
-        // 4. Executa a Reabertura dos Dados
         $session->update([
             'status' => 'open',
             'closed_at' => null,
-            'closing_balance' => null, // Reseta a contagem manual feita no fechamento
+            'closing_balance' => null,
         ]);
 
-        // 5. Log de Movimentação (Para registro no histórico do turno)
-        BarCashMovement::create([
-            'bar_cash_session_id' => $session->id,
-            'user_id' => auth()->id(),
-            'type' => 'reforco', // Usamos tipo reforço com valor 0 para marcar o evento
-            'amount' => 0,
-            'description' => "SESSÃO REABERTA POR GESTOR | POR: {$supervisor->name}",
-            'payment_method' => 'SISTEMA'
-        ]);
-
-        return back()->with('success', "O turno de {$session->user->name} foi reaberto com sucesso!");
+        return back()->with('success', 'Caixa reaberto com sucesso!');
     }
 
     /**

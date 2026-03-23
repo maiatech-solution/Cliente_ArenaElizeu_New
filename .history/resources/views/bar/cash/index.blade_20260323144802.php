@@ -362,91 +362,86 @@
                         </tbody>
                     </table>
                 </div>
-            </div> {{-- Fim do Histórico --}}
-        @endif {{-- 🟢 MOVA O @ENDIF PARA CÁ. Isso encerra a lógica central --}}
+            </div>
 
-        {{-- 🔍 AQUI ENTRA A SEÇÃO DE AUDITORIA (FORA DO @IF ANTERIOR) --}}
-        @if (in_array(auth()->user()->role, ['admin', 'gestor']))
-            <div class="mb-10 animate-in mt-12 fade-in duration-700">
-                <div class="flex items-center gap-4 mb-6">
-                    <h3 class="text-[10px] font-black text-orange-500 uppercase tracking-[0.4em] italic">
-                        Turnos Encerrados (Auditoria)
-                    </h3>
-                    <div class="flex-1 h-px bg-gray-800"></div>
-                </div>
+            {{-- 🔍 SEÇÃO DE AUDITORIA: REABERTURA DE TURNOS (APENAS GESTOR) --}}
+            @if (in_array(auth()->user()->role, ['admin', 'gestor']))
+                <div class="mb-10 animate-in mt-12 fade-in duration-700">
+                    <div class="flex items-center gap-4 mb-6">
+                        <h3 class="text-[10px] font-black text-orange-500 uppercase tracking-[0.4em] italic">
+                            Turnos Encerrados (Auditoria)
+                        </h3>
+                        <div class="flex-1 h-px bg-gray-800"></div>
+                    </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    @forelse($sessionsClosed ?? [] as $sessao)
-                        <div
-                            class="bg-gray-900/50 border-2 border-gray-800 p-6 rounded-[2.5rem] hover:border-orange-500/30 transition-all group relative overflow-hidden">
-                            <div class="flex justify-between items-start mb-4">
-                                <div class="flex items-center gap-3">
-                                    <div
-                                        class="w-10 h-10 bg-gray-800 rounded-2xl flex items-center justify-center text-xl shadow-inner">
-                                        👤</div>
-                                    <div>
-                                        <h4 class="text-white font-black uppercase text-xs italic">
-                                            {{ $sessao->user->name }}</h4>
-                                        <p class="text-[9px] text-gray-500 font-bold uppercase tracking-tighter">Sessão
-                                            #{{ $sessao->id }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        @forelse($sessionsClosed ?? [] as $sessao)
+                            <div
+                                class="bg-gray-900/50 border-2 border-gray-800 p-6 rounded-[2.5rem] hover:border-orange-500/30 transition-all group relative overflow-hidden">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-10 h-10 bg-gray-800 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                                            👤</div>
+                                        <div>
+                                            <h4 class="text-white font-black uppercase text-xs italic">
+                                                {{ $sessao->user->name }}</h4>
+                                            <p class="text-[9px] text-gray-500 font-bold uppercase tracking-tighter">
+                                                Sessão #{{ $sessao->id }}</p>
+                                        </div>
+                                    </div>
+                                    <span
+                                        class="px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-black rounded border border-red-500/20 uppercase">Encerrado</span>
+                                </div>
+
+                                {{-- 💰 EXIBIÇÃO DO VALOR TOTAL E HORÁRIOS --}}
+                                <div class="space-y-3 mb-6 bg-black/20 p-5 rounded-3xl border border-white/5">
+                                    <div class="flex justify-between items-center">
+                                        <p
+                                            class="text-[8px] text-gray-600 font-black uppercase italic tracking-widest">
+                                            Faturamento Real</p>
+                                        <p class="text-sm text-green-500 font-black font-mono italic">
+                                            R$ {{ number_format($sessao->total_vendas_sistema ?? 0, 2, ',', '.') }}
+                                        </p>
+                                    </div>
+                                    <div class="h-px bg-gray-800/50"></div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p class="text-[8px] text-gray-600 font-black uppercase italic">Abertura
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 font-bold tracking-tighter">
+                                                {{ \Carbon\Carbon::parse($sessao->opened_at)->format('H:i') }}
+                                            </p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-[8px] text-gray-600 font-black uppercase italic">Fechamento
+                                            </p>
+                                            <p class="text-[11px] text-gray-400 font-bold tracking-tighter">
+                                                {{ \Carbon\Carbon::parse($sessao->closed_at)->format('H:i') }}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                                <span
-                                    class="px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-black rounded border border-red-500/20 uppercase">Encerrado</span>
-                            </div>
 
-                            <div class="space-y-3 mb-6 bg-black/20 p-5 rounded-3xl border border-white/5">
-                                <div class="flex justify-between items-center">
-                                    <p class="text-[8px] text-gray-600 font-black uppercase italic tracking-widest">
-                                        Faturamento Real</p>
-                                    <p class="text-sm text-green-500 font-black font-mono italic">
-                                        R$ {{ number_format($sessao->total_vendas_sistema ?? 0, 2, ',', '.') }}
-                                    </p>
-                                </div>
-                                <div class="h-px bg-gray-800/50"></div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p class="text-[8px] text-gray-600 font-black uppercase italic">Abertura</p>
-                                        <p class="text-[11px] text-gray-400 font-bold tracking-tighter">
-                                            {{ \Carbon\Carbon::parse($sessao->opened_at)->format('H:i') }}</p>
-                                    </div>
-                                    <div class="text-right">
-                                        <p class="text-[8px] text-gray-600 font-black uppercase italic">Fechamento</p>
-                                        <p class="text-[11px] text-gray-400 font-bold tracking-tighter">
-                                            {{ \Carbon\Carbon::parse($sessao->closed_at)->format('H:i') }}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {{-- 🛡️ LÓGICA DE TRAVA DE REABERTURA --}}
-                            @php
-                                $conflitoOperador = $openSession && $openSession->user_id == $sessao->user_id;
-                            @endphp
-
-                            @if ($conflitoOperador)
-                                <div
-                                    class="w-full py-3 bg-gray-800/50 text-gray-500 border border-gray-700 font-black rounded-xl uppercase text-[8px] text-center italic">
-                                    ⚠️ Operador com caixa ativo
-                                </div>
-                            @else
                                 <button
                                     onclick="prepararReabertura('{{ $sessao->id }}', '{{ $sessao->user->name }}')"
                                     class="w-full py-3 bg-orange-600/10 hover:bg-orange-600 text-orange-500 hover:text-white border border-orange-600/20 font-black rounded-xl uppercase text-[9px] tracking-widest transition-all shadow-lg active:scale-95">
                                     🔓 Reabrir este Turno
                                 </button>
-                            @endif
-                        </div>
-                    @empty
-                        <div
-                            class="col-span-full py-10 text-center border-2 border-dashed border-gray-800 rounded-[2.5rem] opacity-30">
-                            <p class="text-gray-600 font-black uppercase text-[10px] tracking-widest italic">Nenhum
-                                turno encerrado para auditar</p>
-                        </div>
-                    @endforelse
+                            </div>
+                        @empty
+                            <div
+                                class="col-span-full py-10 text-center border-2 border-dashed border-gray-800 rounded-[2.5rem] opacity-30">
+                                <p class="text-gray-600 font-black uppercase text-[10px] tracking-widest italic">Nenhum
+                                    turno encerrado para auditar</p>
+                            </div>
+                        @endforelse
+                    </div>
                 </div>
-            </div>
+            @endif
+
         @endif
-    </div> {{-- Esta div fecha a max-w-1600 --}}
+    </div>
 
     @include('bar.cash.modals.movements')
     @include('bar.cash.modals.closing')
@@ -608,9 +603,16 @@
             }
 
             passHidden.value = passVisivel;
+
+            // Feedback visual
+            const btn = document.querySelector('#formReopen button[onclick="executarReabertura()"]');
+            btn.innerHTML = "PROCESSANDO...";
+            btn.disabled = true;
+
             form.submit();
         }
 
+        // Garanta que elas estejam no window se precisar chamar de fora
         window.prepararReabertura = prepararReabertura;
         window.executarReabertura = executarReabertura;
 
