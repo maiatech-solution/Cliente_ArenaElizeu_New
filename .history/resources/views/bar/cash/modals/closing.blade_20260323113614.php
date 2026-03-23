@@ -1,6 +1,6 @@
 {{-- resources/views/bar/cash/modals/closing.blade.php --}}
 <div id="modalFecharCaixa"
-    class="hidden fixed inset-0 z-50 flex items-center justify-center bg-gray-950/70 backdrop-blur-sm p-4 overflow-hidden">
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 overflow-hidden">
     <div
         class="bg-gray-900 border border-gray-800 w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden shadow-orange-900/20">
 
@@ -23,48 +23,53 @@
             {{-- 📊 DASHBOARD DE FECHAMENTO DETALHADO --}}
             <div class="space-y-4 mb-8">
 
-                {{-- 📊 MATEMÁTICA DO CAIXA GERAL (Versão Compacta) --}}
-                <div class="bg-black/40 p-5 rounded-3xl border border-gray-800 shadow-inner">
+                {{-- 📊 MATEMÁTICA DO CAIXA GERAL (Conferência Unificada) --}}
+                <div class="bg-black/40 p-6 rounded-3xl border border-gray-800 shadow-inner space-y-3">
                     <span
-                        class="text-[9px] font-black text-gray-500 uppercase block mb-3 tracking-[0.2em] border-b border-gray-800 pb-2">
-                        🧮 CONFERÊNCIA UNIFICADA
+                        class="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-[0.2em] border-b border-gray-800 pb-2">
+                        🧮 CONFERÊNCIA UNIFICADA (GAVETA + BANCO)
                     </span>
 
-                    {{-- Linhas secundárias em grid para economizar altura --}}
-                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 pb-3 border-b border-gray-800/50">
-                        <div class="flex justify-between text-[10px]">
-                            <span class="text-gray-500 uppercase italic">Abertura:</span>
-                            <span class="text-white font-mono">R$
-                                {{ number_format($currentSession->opening_balance ?? 0, 2, ',', '.') }}</span>
-                        </div>
-                        <div class="flex justify-between text-[10px]">
-                            <span class="text-gray-500 uppercase italic">Reforços:</span>
-                            <span class="text-blue-500 font-mono">+
-                                {{ number_format($reforcos ?? 0, 2, ',', '.') }}</span>
-                        </div>
-                        <div class="flex justify-between text-[10px]">
-                            <span class="text-emerald-500 uppercase italic font-bold">Dinheiro:</span>
-                            <span class="text-emerald-500 font-mono">+
-                                {{ number_format($vendasDinheiro ?? 0, 2, ',', '.') }}</span>
-                        </div>
-                        <div class="flex justify-between text-[10px]">
-                            <span class="text-red-500 uppercase italic font-bold">Sangrias:</span>
-                            <span class="text-red-500 font-mono">-
-                                {{ number_format($sangrias ?? 0, 2, ',', '.') }}</span>
-                        </div>
-                        <div class="flex justify-between text-[10px] col-span-2 mt-1 pt-1 border-t border-gray-800/30">
-                            <span class="text-cyan-400 uppercase italic font-bold">Digital (PIX/Cartão):</span>
-                            <span class="text-cyan-400 font-mono">+ R$
-                                {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}</span>
-                        </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400 uppercase font-bold italic">Saldo de Abertura (Troco):</span>
+                        <span class="text-white font-mono">R$
+                            {{ number_format($currentSession->opening_balance ?? 0, 2, ',', '.') }}</span>
                     </div>
 
-                    {{-- Totalizador --}}
-                    <div class="flex justify-between items-center">
-                        <span class="text-[8px] font-black text-orange-500 uppercase tracking-widest leading-tight">
-                            TOTAL ESPERADO<br>(GERAL)
-                        </span>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400 uppercase font-bold italic">(+) Vendas em Notas/Moedas:</span>
+                        <span class="text-emerald-500 font-mono">+ R$
+                            {{ number_format($vendasDinheiro ?? 0, 2, ',', '.') }}</span>
+                    </div>
+
+                    {{-- LINHA NOVA PARA INCLUIR O PIX NA CONTA --}}
+                    <div class="flex justify-between text-xs">
+                        <span class="text-cyan-400 uppercase font-bold italic">(+) Vendas Digital (PIX/Cartão):</span>
+                        <span class="text-cyan-400 font-mono">+ R$
+                            {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}</span>
+                    </div>
+
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400 uppercase font-bold italic">(+) Reforços (Aportes):</span>
+                        <span class="text-blue-500 font-mono font-bold">+ R$
+                            {{ number_format($reforcos ?? 0, 2, ',', '.') }}</span>
+                    </div>
+
+                    <div class="flex justify-between text-xs border-b border-gray-800 pb-2">
+                        <span class="text-gray-400 uppercase font-bold italic">(-) Sangrias (Saídas):</span>
+                        <span class="text-red-500 font-mono font-bold">- R$
+                            {{ number_format($sangrias ?? 0, 2, ',', '.') }}</span>
+                    </div>
+
+                    <div class="flex justify-between items-center pt-2">
+                        <div>
+                            <span
+                                class="text-[9px] font-black text-orange-500 uppercase block tracking-widest leading-tight">
+                                VALOR TOTAL ESPERADO<br>(GAVETA + CONTA DIGITAL)
+                            </span>
+                        </div>
                         <span class="text-white font-black text-3xl italic font-mono tracking-tighter">
+                            {{-- MATEMÁTICA ATUALIZADA: Agora soma o Digital também --}}
                             R$
                             {{ number_format(($currentSession->opening_balance ?? 0) + ($vendasDinheiro ?? 0) + ($faturamentoDigital ?? 0) + ($reforcos ?? 0) - ($sangrias ?? 0), 2, ',', '.') }}
                         </span>

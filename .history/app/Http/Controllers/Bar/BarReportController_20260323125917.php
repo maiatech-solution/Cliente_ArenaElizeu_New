@@ -26,49 +26,32 @@ class BarReportController extends Controller
         $mesReferencia = $request->input('mes_referencia', now()->format('Y-m'));
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
-
         $user = auth()->user();
         $isAdmin = in_array($user->role, ['admin', 'gestor']);
 
-        // 1. FATURAMENTO REAL (O que entrou no bolso, já líquido de descontos)
-        $queryOrders = BarOrder::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('updated_at', [$startDate, $endDate]);
+        // 🎯 A FONTE DA VERDADE: Movimentos de Caixa
+        $queryMovs = BarCashMovement::whereBetween('created_at', [$startDate, $endDate]);
+        if (!$isAdmin) $queryMovs->where('user_id', $user->id);
 
-        $querySales = BarSale::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('created_at', [$startDate, $endDate]);
+        $movimentacoes = $queryMovs->get();
 
-        if (!$isAdmin) {
-            $queryOrders->where('user_id', $user->id);
-            $querySales->where('user_id', $user->id);
-        }
+        // Faturamento Líquido (Vendas - Estornos)
+        $faturamentoMensal = $movimentacoes->where('type', 'venda')->sum('amount')
+            - $movimentacoes->where('type', 'estorno')->sum('amount');
 
-        $faturamentoMensal = $queryOrders->sum('total_value') + $querySales->sum('total_value');
+        $totalSangriasMes = $movimentacoes->where('type', 'sangria')->sum('amount');
 
-        // 2. VOLUME DE ITENS (As 17 unidades)
-        $orderIds = $queryOrders->pluck('id');
-        $saleIds = $querySales->pluck('id');
+        // Itens Vendidos: Apenas dos IDs que geraram movimento financeiro
+        $orderIds = $movimentacoes->whereNotNull('bar_order_id')->pluck('bar_order_id')->unique();
+        $saleIds = $movimentacoes->whereNotNull('bar_sale_id')->pluck('bar_sale_id')->unique();
 
         $totalItensMes = BarOrderItem::whereIn('bar_order_id', $orderIds)->sum('quantity')
             + BarSaleItem::whereIn('bar_sale_id', $saleIds)->sum('quantity');
 
-        // 3. TICKET MÉDIO
-        $totalTransacoes = $orderIds->count() + $saleIds->count();
+        $totalTransacoes = $movimentacoes->where('type', 'venda')->count();
         $ticketMedio = $totalTransacoes > 0 ? $faturamentoMensal / $totalTransacoes : 0;
 
-        // 4. SANGRIAS (Sempre do Caixa)
-        $querySangrias = BarCashMovement::where('type', 'sangria')
-            ->whereBetween('created_at', [$startDate, $endDate]);
-        if (!$isAdmin) $querySangrias->where('user_id', $user->id);
-
-        $totalSangriasMes = $querySangrias->sum('amount');
-
-        return view('bar.reports.index', compact(
-            'faturamentoMensal',
-            'totalItensMes',
-            'ticketMedio',
-            'totalSangriasMes',
-            'mesReferencia'
-        ));
+        return view('bar.reports.index', compact('faturamentoMensal', 'totalItensMes', 'ticketMedio', 'totalSangriasMes', 'mesReferencia'));
     }
 
     /**
@@ -80,47 +63,38 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 1. Pegamos as Ordens e Vendas que REALMENTE foram pagas
-        $orders = BarOrder::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('updated_at', [$startDate, $endDate])
-            ->with('items.product')
-            ->get();
+        // Pegamos os IDs de quem realmente pagou no caixa
+        $movs = BarCashMovement::whereIn('type', ['venda', 'estorno'])
+            ->whereBetween('created_at', [$startDate, $endDate])->get();
 
-        $sales = BarSale::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->with('items.product')
-            ->get();
+        $orderIds = $movs->whereNotNull('bar_order_id')->pluck('bar_order_id')->unique();
+        $saleIds = $movs->whereNotNull('bar_sale_id')->pluck('bar_sale_id')->unique();
 
-        // 2. Unificamos todos os itens em uma única coleção para contar as 17 unidades
-        $allItems = $orders->flatMap->items->concat($sales->flatMap->items);
+        // Itens de Mesa pagos
+        $ordersPart = DB::table('bar_order_items as oi')
+            ->select('oi.bar_product_id', DB::raw('SUM(oi.quantity) as qty'), DB::raw('SUM(oi.subtotal) as revenue'))
+            ->whereIn('oi.bar_order_id', $orderIds)->groupBy('oi.bar_product_id');
 
-        // 3. Calculamos o Desconto Total (Diferença entre Itens e o que foi Pago)
-        // Isso garante que o faturamento final do ranking seja R$ 194,00
-        $totalBruto = $allItems->sum(fn($i) => $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0));
-        $totalPagoReal = $orders->sum('total_value') + $sales->sum('total_value');
-        $descontoGlobal = $totalBruto - $totalPagoReal;
+        // Itens de PDV pagos
+        $salesPart = DB::table('bar_sale_items as si')
+            ->select('si.bar_product_id', DB::raw('SUM(si.quantity) as qty'), DB::raw('SUM(si.quantity * si.price_at_sale) as revenue'))
+            ->whereIn('si.bar_sale_id', $saleIds)->groupBy('si.bar_product_id');
 
-        // 4. Agrupamos por Produto para gerar o Ranking
-        $ranking = $allItems->groupBy('bar_product_id')->map(function ($group) use ($descontoGlobal, $totalBruto) {
-            $product = $group->first()->product;
-            $totalQty = $group->sum('quantity');
+        $unificado = $ordersPart->unionAll($salesPart)->get();
 
-            // Faturamento Bruto deste produto específico
-            $rawRevenue = $group->sum(fn($item) => $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0));
-
-            // Rateio do Desconto: O produto assume uma parte do desconto proporcional ao seu valor
-            $proporcaoNoFaturamento = $totalBruto > 0 ? ($rawRevenue / $totalBruto) : 0;
-            $faturamentoLiquido = $rawRevenue - ($descontoGlobal * $proporcaoNoFaturamento);
-
-            $totalCost = ($product->purchase_price ?? 0) * $totalQty;
-            $totalProfit = $faturamentoLiquido - $totalCost;
+        $ranking = $unificado->groupBy('bar_product_id')->map(function ($group) {
+            $product = BarProduct::with('category')->find($group->first()->bar_product_id);
+            $qty = $group->sum('qty');
+            $rev = $group->sum('revenue');
+            $cost = ($product->purchase_price ?? 0) * $qty;
+            $profit = $rev - $cost;
 
             return (object)[
                 'product' => $product,
-                'total_qty' => $totalQty,
-                'total_revenue' => $faturamentoLiquido,
-                'total_profit' => $totalProfit,
-                'margin_percent' => $faturamentoLiquido > 0 ? ($totalProfit / $faturamentoLiquido) * 100 : 0
+                'total_qty' => $qty,
+                'total_revenue' => $rev,
+                'total_profit' => $profit,
+                'margin_percent' => $rev > 0 ? ($profit / $rev) * 100 : 0
             ];
         })->sortByDesc('total_qty');
 

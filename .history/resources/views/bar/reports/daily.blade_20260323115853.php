@@ -9,11 +9,7 @@
         foreach($datas as $dia => $valores) {
             $carbonDia = \Carbon\Carbon::parse($dia);
             if($carbonDia->format('m') == $mesAtualFiltro) {
-                // Faturamento
                 $vendaDia = ($valores['mesas'] ?? 0) + ($valores['pdv'] ?? 0);
-
-                // 🎯 BUSCA DO LUCRO (Sincronizado com a lógica do Ranking de Produtos)
-                // Se a sua Controller ainda não envia 'lucro_mesas', o sistema usará 0 por segurança
                 $lucroDia = ($valores['lucro_mesas'] ?? 0) + ($valores['lucro_pdv'] ?? 0);
 
                 $totalGeralMes += $vendaDia;
@@ -43,8 +39,8 @@
                     <h1 class="text-4xl font-black text-white uppercase tracking-tighter italic leading-none">
                         Resumo <span class="text-orange-600">Diário</span>
                     </h1>
-                    <p class="text-gray-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-1 italic">
-                        Análise de faturamento e rentabilidade líquida
+                    <p class="text-gray-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-1">
+                        Evolução de faturamento e lucro por dia
                     </p>
                 </div>
             </div>
@@ -73,28 +69,26 @@
 
             <div class="bg-gray-900 p-6 rounded-[2rem] border border-gray-800 border-l-4 border-l-gray-600 shadow-2xl">
                 <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 italic">Total Acumulado</p>
-                <h3 class="text-3xl font-black text-white italic tracking-tighter font-mono opacity-40">
+                <h3 class="text-3xl font-black text-white italic tracking-tighter font-mono opacity-50">
                     R$ {{ number_format($totalGeralMes, 2, ',', '.') }}
                 </h3>
             </div>
 
             <div class="bg-emerald-600 p-6 rounded-[2rem] shadow-xl shadow-emerald-600/20 flex flex-col justify-center relative overflow-hidden group">
-                <div class="absolute -right-2 -top-2 opacity-10 text-5xl group-hover:scale-110 transition-transform italic font-black">LUCRO</div>
-                <p class="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-1 italic font-bold">Lucro Líquido Real</p>
+                <div class="absolute -right-2 -top-2 opacity-10 text-5xl group-hover:scale-110 transition-transform">📈</div>
+                <p class="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-1 italic">Lucro Líquido</p>
                 <h3 class="text-3xl font-black text-white italic tracking-tighter font-mono">
                     R$ {{ number_format($lucroGeralMes, 2, ',', '.') }}
                 </h3>
-                <span class="text-[8px] text-emerald-100 font-black uppercase mt-1 tracking-widest">
-                    Margem Global: {{ $totalGeralMes > 0 ? number_format(($lucroGeralMes / $totalGeralMes) * 100, 1) : 0 }}%
-                </span>
+                <span class="text-[8px] text-emerald-100 font-bold uppercase mt-1">Margem: {{ $totalGeralMes > 0 ? number_format(($lucroGeralMes / $totalGeralMes) * 100, 1) : 0 }}%</span>
             </div>
         </div>
 
         {{-- 📈 GRÁFICO DE BARRAS --}}
-        <div class="bg-gray-900 border border-gray-800 rounded-[3rem] p-8 mb-10 shadow-2xl relative overflow-hidden text-white">
-            <h2 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-10 italic">Performance de Vendas Diárias</h2>
+        <div class="bg-gray-900 border border-gray-800 rounded-[3rem] p-8 mb-10 shadow-2xl relative overflow-hidden">
+            <h2 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-10 italic">Performance de Vendas</h2>
 
-            <div class="flex items-end justify-between gap-1 h-64 px-2 border-b border-gray-800/50 pb-2 overflow-x-auto no-scrollbar font-mono">
+            <div class="flex items-end justify-between gap-1 h-64 px-2 border-b border-gray-800/50 pb-2 overflow-x-auto no-scrollbar">
                 @php $maxChart = $maxValorDia ?: 1; @endphp
                 @foreach ($datas as $dia => $valores)
                     @php
@@ -104,20 +98,18 @@
                     @endphp
 
                     @if ($carbonDia->format('m') == $mesAtualFiltro)
-                        <div class="flex-1 min-w-[35px] flex flex-col items-center group relative">
-                            <div class="absolute -top-10 bg-orange-600 text-white text-[9px] font-black px-2 py-1 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-all z-10 whitespace-nowrap">
+                        <div class="flex-1 min-w-[30px] flex flex-col items-center group relative">
+                            <div class="absolute -top-10 bg-orange-600 text-white text-[9px] font-black px-2 py-1 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-all z-10">
                                 R$ {{ number_format($totalDia, 2, ',', '.') }}
                             </div>
 
-                            <div class="w-full max-w-[24px] rounded-t-lg transition-all duration-500 relative
-                            {{ $carbonDia->isToday() ? 'bg-orange-500 shadow-[0_0_20px_rgba(234,88,12,0.4)]' : ($totalDia > 0 ? 'bg-gray-700 group-hover:bg-orange-600/50' : 'bg-gray-800/30') }}"
+                            <div class="w-full max-w-[22px] rounded-t-md transition-all duration-500
+                            {{ $carbonDia->isToday() ? 'bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.4)]' : ($totalDia > 0 ? 'bg-gray-700 group-hover:bg-orange-600/50' : 'bg-gray-800/30') }}"
                                 style="height: {{ max($altura, 2) }}%">
                             </div>
 
-                            <span class="mt-3 text-[9px] font-black {{ $carbonDia->isToday() ? 'text-orange-500 underline' : 'text-gray-600' }}">
-                                {{ $carbonDia->format('d') }}
-                            </span>
-                            <span class="text-[6px] font-black uppercase text-gray-700 tracking-tighter italic">{{ $diasSemana[$carbonDia->format('l')] }}</span>
+                            <span class="mt-3 text-[8px] font-black {{ $carbonDia->isToday() ? 'text-orange-500' : 'text-gray-600' }}">{{ $carbonDia->format('d') }}</span>
+                            <span class="text-[6px] font-bold uppercase text-gray-700">{{ $diasSemana[$carbonDia->format('l')] }}</span>
                         </div>
                     @endif
                 @endforeach
@@ -126,27 +118,27 @@
 
         {{-- 📋 TABELA DETALHADA --}}
         <div class="bg-gray-900 border border-gray-800 rounded-[3rem] shadow-2xl overflow-hidden">
-            <div class="p-8 border-b border-gray-800 bg-black/20 flex justify-between items-center font-mono">
-                <h2 class="text-[10px] font-black text-white uppercase tracking-widest italic">Detalhamento Financeiro do Turno</h2>
-                <div class="flex gap-6">
-                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-blue-500"></span><span class="text-[8px] text-gray-500 font-black uppercase tracking-widest">Mesas</span></div>
-                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-orange-500"></span><span class="text-[8px] text-gray-500 font-black uppercase tracking-widest">PDV / Balcão</span></div>
-                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-[8px] text-gray-500 font-black uppercase tracking-widest italic font-bold">Lucro</span></div>
+            <div class="p-8 border-b border-gray-800 bg-black/20 flex justify-between items-center text-[10px] font-black text-white uppercase tracking-widest italic">
+                <span>Detalhamento Financeiro</span>
+                <div class="flex gap-4">
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-blue-500"></span><span>Mesas</span></div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-orange-500"></span><span>PDV</span></div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Lucro</span></div>
                 </div>
             </div>
 
             <div class="overflow-x-auto no-scrollbar">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="bg-black/40 text-white">
-                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest">Data / Dia da Semana</th>
-                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Faturamento Mesas</th>
-                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Faturamento PDV</th>
-                            <th class="p-8 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right italic font-bold">Lucro Líquido</th>
-                            <th class="p-8 text-[10px] font-black text-white uppercase tracking-widest text-right italic font-bold">Total Bruto</th>
+                        <tr class="bg-black/40">
+                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest">Data / Dia</th>
+                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Vendas Mesas</th>
+                            <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Vendas PDV</th>
+                            <th class="p-8 text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right italic">Lucro Líquido</th>
+                            <th class="p-8 text-[10px] font-black text-white uppercase tracking-widest text-right italic">Total Bruto</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-800/40 font-mono">
+                    <tbody class="divide-y divide-gray-800/40">
                         @foreach (array_reverse($datas, true) as $dia => $valores)
                             @php
                                 $totalDia = ($valores['mesas'] ?? 0) + ($valores['pdv'] ?? 0);
@@ -158,30 +150,21 @@
                                 <tr class="hover:bg-white/[0.02] transition-colors group {{ $carbon->isToday() ? 'bg-orange-600/[0.03]' : '' }}">
                                     <td class="p-8">
                                         <div class="flex items-center gap-4">
-                                            <div class="w-14 h-14 rounded-2xl bg-black border border-gray-800 flex flex-col items-center justify-center text-base font-black {{ $carbon->isToday() ? 'text-orange-500 border-orange-600/30 shadow-[0_0_15px_rgba(234,88,12,0.1)]' : 'text-gray-500' }} uppercase italic shadow-inner">
+                                            <div class="w-12 h-12 rounded-2xl bg-black border border-gray-800 flex flex-col items-center justify-center text-sm font-black {{ $carbon->isToday() ? 'text-orange-500' : 'text-gray-500' }} uppercase italic">
                                                 <span>{{ $carbon->format('d') }}</span>
-                                                <span class="text-[8px] tracking-tighter leading-none">{{ $diasSemana[$carbon->format('l')] }}</span>
+                                                <span class="text-[7px]">{{ $diasSemana[$carbon->format('l')] }}</span>
                                             </div>
                                             <div>
-                                                <span class="text-white font-black block uppercase text-base tracking-tighter group-hover:text-orange-500 transition-colors">
-                                                    {{ $diasSemanaFull[$carbon->format('l')] }}
-                                                </span>
-                                                <span class="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] leading-tight">{{ $carbon->format('d/m/Y') }}</span>
+                                                <span class="text-white font-black block uppercase text-sm tracking-tighter group-hover:text-orange-500 transition-colors">{{ $diasSemanaFull[$carbon->format('l')] }}</span>
+                                                <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">{{ $carbon->format('d/m/Y') }}</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="p-8 text-right font-black text-blue-400 text-xs italic">R$ {{ number_format($valores['mesas'] ?? 0, 2, ',', '.') }}</td>
-                                    <td class="p-8 text-right font-black text-orange-400 text-xs italic">R$ {{ number_format($valores['pdv'] ?? 0, 2, ',', '.') }}</td>
-                                    <td class="p-8 text-right bg-emerald-500/[0.02]">
-                                        <span class="text-xl font-black text-emerald-500 italic tracking-tighter">
-                                            R$ {{ number_format($lucroDia, 2, ',', '.') }}
-                                        </span>
-                                        <p class="text-[7px] text-emerald-600 font-black uppercase mt-1">Margem: {{ $totalDia > 0 ? number_format(($lucroDia / $totalDia) * 100, 1) : 0 }}%</p>
-                                    </td>
+                                    <td class="p-8 text-right font-bold text-blue-400/70 text-xs font-mono">R$ {{ number_format($valores['mesas'] ?? 0, 2, ',', '.') }}</td>
+                                    <td class="p-8 text-right font-bold text-orange-400/70 text-xs font-mono">R$ {{ number_format($valores['pdv'] ?? 0, 2, ',', '.') }}</td>
+                                    <td class="p-8 text-right font-black text-emerald-500 text-sm font-mono">R$ {{ number_format($lucroDia, 2, ',', '.') }}</td>
                                     <td class="p-8 text-right">
-                                        <span class="text-3xl font-black text-white italic tracking-tighter">
-                                            R$ {{ number_format($totalDia, 2, ',', '.') }}
-                                        </span>
+                                        <span class="text-2xl font-black text-white italic tracking-tighter font-mono">R$ {{ number_format($totalDia, 2, ',', '.') }}</span>
                                     </td>
                                 </tr>
                             @endif

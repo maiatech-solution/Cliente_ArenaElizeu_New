@@ -31,7 +31,7 @@
                     </span>
 
                     {{-- Linhas secundárias em grid para economizar altura --}}
-                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 pb-3 border-b border-gray-800/50">
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 pb-3 ">
                         <div class="flex justify-between text-[10px]">
                             <span class="text-gray-500 uppercase italic">Abertura:</span>
                             <span class="text-white font-mono">R$

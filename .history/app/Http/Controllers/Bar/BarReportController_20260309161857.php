@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\DB;
 
 class BarReportController extends Controller
 {
-
+    /**
+     * DASHBOARD PRINCIPAL DE RELATÓRIOS
+     */
     /**
      * DASHBOARD PRINCIPAL DE RELATÓRIOS (CORRIGIDO)
      */
@@ -27,48 +29,59 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
+        // 🛡️ LÓGICA DE PRIVACIDADE:
+        // Se for Admin ou Gestor, vê o faturamento total da Arena.
+        // Se for Colaborador, vê apenas o que ele vendeu no mês.
         $user = auth()->user();
         $isAdmin = in_array($user->role, ['admin', 'gestor']);
 
-        // 1. FATURAMENTO REAL (O que entrou no bolso, já líquido de descontos)
-        $queryOrders = BarOrder::whereIn('status', ['paid', 'pago'])
+        // 1. Faturamento Consolidado
+        $queryMesas = BarOrder::whereIn('status', ['paid', 'pago'])
             ->whereBetween('updated_at', [$startDate, $endDate]);
 
-        $querySales = BarSale::whereIn('status', ['paid', 'pago'])
+        $queryPDV = BarSale::whereIn('status', ['paid', 'pago'])
             ->whereBetween('created_at', [$startDate, $endDate]);
 
+        // Se NÃO for admin, filtra pelo ID do usuário logado
         if (!$isAdmin) {
-            $queryOrders->where('user_id', $user->id);
-            $querySales->where('user_id', $user->id);
+            $queryMesas->where('user_id', $user->id);
+            $queryPDV->where('user_id', $user->id);
         }
 
-        $faturamentoMensal = $queryOrders->sum('total_value') + $querySales->sum('total_value');
+        $faturamentoMesas = $queryMesas->sum('total_value');
+        $faturamentoPDV = $queryPDV->sum('total_value');
+        $faturamentoMensal = $faturamentoMesas + $faturamentoPDV;
 
-        // 2. VOLUME DE ITENS (As 17 unidades)
-        $orderIds = $queryOrders->pluck('id');
-        $saleIds = $querySales->pluck('id');
+        // 2. Itens Vendidos (Com Filtro de Usuário)
+        $itensMesas = BarOrderItem::whereHas('order', function ($q) use ($startDate, $endDate, $isAdmin, $user) {
+            $q->whereIn('status', ['paid', 'pago'])
+                ->whereBetween('updated_at', [$startDate, $endDate]);
+            if (!$isAdmin) $q->where('user_id', $user->id);
+        })->sum('quantity');
 
-        $totalItensMes = BarOrderItem::whereIn('bar_order_id', $orderIds)->sum('quantity')
-            + BarSaleItem::whereIn('bar_sale_id', $saleIds)->sum('quantity');
+        $itensPDV = BarSaleItem::whereHas('sale', function ($q) use ($startDate, $endDate, $isAdmin, $user) {
+            $q->whereIn('status', ['paid', 'pago'])
+                ->whereBetween('created_at', [$startDate, $endDate]);
+            if (!$isAdmin) $q->where('user_id', $user->id);
+        })->sum('quantity');
 
-        // 3. TICKET MÉDIO
-        $totalTransacoes = $orderIds->count() + $saleIds->count();
-        $ticketMedio = $totalTransacoes > 0 ? $faturamentoMensal / $totalTransacoes : 0;
+        $totalItensMes = $itensMesas + $itensPDV;
 
-        // 4. SANGRIAS (Sempre do Caixa)
-        $querySangrias = BarCashMovement::where('type', 'sangria')
+        // 3. Ticket Médio (Filtrado)
+        $countMesas = (clone $queryMesas)->count();
+        $countPDV = (clone $queryPDV)->count();
+        $transacoes = $countMesas + $countPDV;
+
+        $ticketMedio = $transacoes > 0 ? $faturamentoMensal / $transacoes : 0;
+
+        // 4. Sangrias (Apenas as que o usuário fez, se não for admin)
+        $querySangria = BarCashMovement::where('type', 'sangria')
             ->whereBetween('created_at', [$startDate, $endDate]);
-        if (!$isAdmin) $querySangrias->where('user_id', $user->id);
+        if (!$isAdmin) $querySangria->where('user_id', $user->id);
 
-        $totalSangriasMes = $querySangrias->sum('amount');
+        $totalSangriasMes = $querySangria->sum('amount');
 
-        return view('bar.reports.index', compact(
-            'faturamentoMensal',
-            'totalItensMes',
-            'ticketMedio',
-            'totalSangriasMes',
-            'mesReferencia'
-        ));
+        return view('bar.reports.index', compact('faturamentoMensal', 'totalItensMes', 'ticketMedio', 'totalSangriasMes', 'mesReferencia'));
     }
 
     /**
@@ -80,49 +93,50 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 1. Pegamos as Ordens e Vendas que REALMENTE foram pagas
-        $orders = BarOrder::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('updated_at', [$startDate, $endDate])
-            ->with('items.product')
+        // 1. Query das Mesas (Status: paid)
+        $ordersPart = DB::table('bar_order_items as oi')
+            ->join('bar_orders as o', 'oi.bar_order_id', '=', 'o.id')
+            ->select('oi.bar_product_id', 'oi.quantity', 'oi.subtotal')
+            ->where('o.status', 'paid') // Nas mesas é 'paid'
+            ->whereBetween('o.updated_at', [$startDate, $endDate]);
+
+        // 2. Query do PDV (Status: pago) - 🚨 AQUI ESTAVA O ERRO
+        $salesPart = DB::table('bar_sale_items as si')
+            ->join('bar_sales as s', 'si.bar_sale_id', '=', 's.id')
+            ->select(
+                'si.bar_product_id',
+                'si.quantity',
+                DB::raw('(si.quantity * si.price_at_sale) as subtotal')
+            )
+            ->where('s.status', 'pago') // 🎯 No PDV seu banco usa 'pago'
+            ->whereBetween('s.created_at', [$startDate, $endDate]);
+
+        // Unifica as duas origens
+        $rankingFinal = $ordersPart->unionAll($salesPart);
+
+        $ranking = DB::table(DB::raw("({$rankingFinal->toSql()}) as combined"))
+            ->mergeBindings($rankingFinal)
+            ->select(
+                'bar_product_id',
+                DB::raw('SUM(quantity) as total_qty'),
+                DB::raw('SUM(subtotal) as total_revenue')
+            )
+            ->groupBy('bar_product_id')
+            ->orderBy('total_qty', 'desc')
             ->get();
 
-        $sales = BarSale::whereIn('status', ['paid', 'pago'])
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->with('items.product')
-            ->get();
+        // 3. Processa os dados de lucro e produtos
+        foreach ($ranking as $item) {
+            $product = BarProduct::with('category')->find($item->bar_product_id);
+            $item->product = $product;
 
-        // 2. Unificamos todos os itens em uma única coleção para contar as 17 unidades
-        $allItems = $orders->flatMap->items->concat($sales->flatMap->items);
-
-        // 3. Calculamos o Desconto Total (Diferença entre Itens e o que foi Pago)
-        // Isso garante que o faturamento final do ranking seja R$ 194,00
-        $totalBruto = $allItems->sum(fn($i) => $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0));
-        $totalPagoReal = $orders->sum('total_value') + $sales->sum('total_value');
-        $descontoGlobal = $totalBruto - $totalPagoReal;
-
-        // 4. Agrupamos por Produto para gerar o Ranking
-        $ranking = $allItems->groupBy('bar_product_id')->map(function ($group) use ($descontoGlobal, $totalBruto) {
-            $product = $group->first()->product;
-            $totalQty = $group->sum('quantity');
-
-            // Faturamento Bruto deste produto específico
-            $rawRevenue = $group->sum(fn($item) => $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0));
-
-            // Rateio do Desconto: O produto assume uma parte do desconto proporcional ao seu valor
-            $proporcaoNoFaturamento = $totalBruto > 0 ? ($rawRevenue / $totalBruto) : 0;
-            $faturamentoLiquido = $rawRevenue - ($descontoGlobal * $proporcaoNoFaturamento);
-
-            $totalCost = ($product->purchase_price ?? 0) * $totalQty;
-            $totalProfit = $faturamentoLiquido - $totalCost;
-
-            return (object)[
-                'product' => $product,
-                'total_qty' => $totalQty,
-                'total_revenue' => $faturamentoLiquido,
-                'total_profit' => $totalProfit,
-                'margin_percent' => $faturamentoLiquido > 0 ? ($totalProfit / $faturamentoLiquido) * 100 : 0
-            ];
-        })->sortByDesc('total_qty');
+            if ($product) {
+                $custoUnitario = $product->purchase_price ?? 0;
+                $item->total_cost = $custoUnitario * $item->total_qty;
+                $item->total_profit = $item->total_revenue - $item->total_cost;
+                $item->margin_percent = $item->total_revenue > 0 ? ($item->total_profit / $item->total_revenue) * 100 : 0;
+            }
+        }
 
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
     }
@@ -133,92 +147,82 @@ class BarReportController extends Controller
     public function cashier(Request $request)
     {
         $mesReferencia = $request->input('mes_referencia', now()->format('Y-m'));
-        $startDate = Carbon::parse($mesReferencia)->startOfMonth();
-        $endDate = Carbon::parse($mesReferencia)->endOfMonth();
+        $startDate = \Carbon\Carbon::parse($mesReferencia)->startOfMonth();
+        $endDate = \Carbon\Carbon::parse($mesReferencia)->endOfMonth();
 
-        $sessoes = BarCashSession::with('user')
+        $sessoes = \App\Models\Bar\BarCashSession::with('user')
             ->whereBetween('opened_at', [$startDate, $endDate])
-            ->orderBy('opened_at', 'desc')->get();
+            ->orderBy('opened_at', 'desc')
+            ->get();
 
-        foreach ($sessoes as $s) {
-            $movs = BarCashMovement::where('bar_cash_session_id', $s->id)->get();
-            $s->vendas_turno = $movs->where('type', 'venda')->sum('amount') - $movs->where('type', 'estorno')->sum('amount');
+        foreach ($sessoes as $sessao) {
+            // 🎯 A FONTE ÚNICA DA VERDADE: Movimentações financeiras da sessão
+            $movimentacoes = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $sessao->id)->get();
+
+            // 1. Somatória de Vendas Brutas (Registradas como 'venda' no fluxo)
+            $vendasBrutasTotal = $movimentacoes->where('type', 'venda')->sum('amount');
+
+            // 2. Somatória de Estornos (O que anula a venda)
+            $totalEstornado = $movimentacoes->where('type', 'estorno')->sum('amount');
+
+            // 3. Reforços e Sangrias
+            $reforcos = $movimentacoes->where('type', 'reforco')->sum('amount');
+            $sangrias = $movimentacoes->where('type', 'sangria')->sum('amount');
+
+            // 4. Resultado para a Tabela de Auditoria
+
+            // "Vendas do Turno" agora mostra o Líquido Real (Vendas - Estornos)
+            // Isso fará com que o valor na coluna "Vendas" bata com o que o usuário viu no dashboard
+            $sessao->vendas_turno = $vendasBrutasTotal - $totalEstornado;
+
+            // 📊 FÓRMULA MESTRA (Idêntica ao Controller de Fechamento)
+            // Total Esperado = (Fundo Inicial + Vendas Brutas + Reforços) - (Sangrias + Estornos)
+            $sessao->total_sistema_esperado = ($sessao->opening_balance + $vendasBrutasTotal + $reforcos) - ($sangrias + $totalEstornado);
         }
 
         return view('bar.reports.cashier', compact('sessoes', 'mesReferencia'));
     }
 
     /**
-     * RESUMO DE VENDAS DIÁRIAS COM CÁLCULO DE LUCRO REAL
+     * RESUMO DE VENDAS DIÁRIAS (AJUSTADO PARA BATER COM O CAIXA)
      */
     public function daily(Request $request)
     {
         $mesReferencia = $request->input('mes_referencia', now()->format('Y-m'));
-        $startDate = Carbon::parse($mesReferencia)->startOfMonth();
-        $endDate = Carbon::parse($mesReferencia)->endOfMonth();
+        $startDate = \Carbon\Carbon::parse($mesReferencia)->startOfMonth();
+        $endDate = \Carbon\Carbon::parse($mesReferencia)->endOfMonth();
 
-        // 1. Busca os Itens
-        $orderItems = BarOrderItem::whereHas('order', fn($q) => $q->whereIn('status', ['paid', 'pago'])->whereBetween('updated_at', [$startDate, $endDate]))->with('product')->get();
-        $saleItems = BarSaleItem::whereHas('sale', fn($q) => $q->whereIn('status', ['paid', 'pago'])->whereBetween('created_at', [$startDate, $endDate]))->with('product')->get();
+        // 🎯 O SEGREDO: Consultamos a BarCashMovement para bater com o relatório de auditoria
+        // Filtramos apenas o que é 'venda' ou 'estorno' para compor o faturamento real.
+        $movimentacoes = \App\Models\Bar\BarCashMovement::whereIn('type', ['venda', 'estorno'])
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->select(
+                DB::raw('DATE(created_at) as date'),
+                // Se for venda soma, se for estorno subtrai
+                DB::raw("SUM(CASE
+                    WHEN type = 'venda' AND description LIKE '%Mesa%' THEN amount
+                    WHEN type = 'estorno' AND description LIKE '%Mesa%' THEN -amount
+                    ELSE 0 END) as total_mesas"),
+                DB::raw("SUM(CASE
+                    WHEN type = 'venda' AND description NOT LIKE '%Mesa%' THEN amount
+                    WHEN type = 'estorno' AND description NOT LIKE '%Mesa%' THEN -amount
+                    ELSE 0 END) as total_pdv")
+            )
+            ->groupBy('date')
+            ->get();
 
+        // 3. Monta o array com todos os dias do mês
         $datas = [];
         $periodo = new \DatePeriod($startDate, new \DateInterval('P1D'), $endDate->copy()->addDay());
-        foreach ($periodo as $d) {
-            $datas[$d->format('Y-m-d')] = ['mesas' => 0, 'pdv' => 0, 'lucro_mesas' => 0, 'lucro_pdv' => 0, 'descontos' => 0];
+
+        foreach ($periodo as $data) {
+            $datas[$data->format('Y-m-d')] = ['mesas' => 0, 'pdv' => 0];
         }
 
-        // 2. Processa itens de Mesas (Soma o valor BRUTO primeiro)
-        foreach ($orderItems as $i) {
-            $dia = $i->updated_at->format('Y-m-d');
-            if (isset($datas[$dia])) {
-                $venda = $i->subtotal;
-                $custo = ($i->product->purchase_price ?? 0) * $i->quantity;
-                $datas[$dia]['mesas'] += $venda;
-                $datas[$dia]['lucro_mesas'] += ($venda - $custo);
-            }
-        }
-
-        // 3. Processa itens de PDV (Soma o valor BRUTO primeiro)
-        foreach ($saleItems as $i) {
-            $dia = $i->created_at->format('Y-m-d');
-            if (isset($datas[$dia])) {
-                $venda = $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0);
-                $custo = ($i->product->purchase_price ?? 0) * $i->quantity;
-                $datas[$dia]['pdv'] += $venda;
-                $datas[$dia]['lucro_pdv'] += ($venda - $custo);
-            }
-        }
-
-        // 🎯 4. AJUSTE DE DESCONTOS (Lógica de Diferença para evitar erro de SQL)
-        foreach ($datas as $data => $valores) {
-            // Descontos em Mesas (usa a coluna discount_value se existir, senão calcula)
-            $ordens = BarOrder::whereIn('status', ['paid', 'pago'])->whereDate('updated_at', $data)->get();
-            $descMesas = 0;
-            foreach ($ordens as $o) {
-                // Se você tem a coluna na tabela de ordens, usamos ela, senão calculamos a diferença
-                $descMesas += $o->discount_value ?? ($o->items->sum('subtotal') - $o->total_value);
-            }
-
-            // Descontos em PDV (Cálculo por diferença pura para evitar erro de coluna inexistente)
-            $vendasPDV = BarSale::whereIn('status', ['paid', 'pago'])->whereDate('created_at', $data)->with('items')->get();
-            $descPDV = 0;
-            foreach ($vendasPDV as $v) {
-                $brutoVenda = $v->items->sum(fn($item) => $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0));
-                $pagoReal = (float)$v->total_value;
-                if ($brutoVenda > $pagoReal) {
-                    $descPDV += ($brutoVenda - $pagoReal);
-                }
-            }
-
-            $totalDesc = $descMesas + $descPDV;
-
-            if ($totalDesc > 0.01) {
-                $datas[$data]['mesas'] -= $descMesas;
-                $datas[$data]['pdv'] -= $descPDV;
-                $datas[$data]['lucro_mesas'] -= $descMesas;
-                $datas[$data]['lucro_pdv'] -= $descPDV;
-                $datas[$data]['descontos'] = $totalDesc;
-            }
+        // Alimenta o array com os dados vindos do fluxo de caixa
+        foreach ($movimentacoes as $m) {
+            $datas[$m->date]['mesas'] = $m->total_mesas;
+            $datas[$m->date]['pdv'] = $m->total_pdv;
         }
 
         return view('bar.reports.daily', compact('datas', 'mesReferencia'));

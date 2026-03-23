@@ -259,11 +259,11 @@ class BarCashController extends Controller
     }
 
     /**
-     * Fechar o Caixa Individual (Sincronizado com Modal Unificado: Gaveta + PIX)
+     * Fechar o Caixa Individual (Atualizado para Auditoria Detalhada)
      */
     public function close(Request $request)
     {
-        // 1. Validação do Supervisor (Mantido)
+        // 1. Validação do Supervisor (Mantido igual)
         if (!$request->supervisor_email || !$request->supervisor_password) {
             return back()->with('error', '⚠️ Autorização necessária.');
         }
@@ -278,10 +278,10 @@ class BarCashController extends Controller
             return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
         }
 
-        // 2. Trava de Mesas Abertas
+        // 2. Trava de Mesas Abertas (Mantido igual)
         $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->count();
         if ($mesasAbertas > 0) {
-            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas no sistema.");
+            return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas.");
         }
 
         $request->validate([
@@ -289,7 +289,7 @@ class BarCashController extends Controller
             'notes' => 'nullable|string|max:500'
         ]);
 
-        // 3. Processamento do Fechamento em Transação
+        // 3. Processamento do Fechamento
         return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $supervisor) {
             $session = \App\Models\Bar\BarCashSession::where('status', 'open')
                 ->where('user_id', auth()->id())
@@ -300,49 +300,46 @@ class BarCashController extends Controller
                 return back()->with('error', 'Erro: Você não tem um turno aberto.');
             }
 
-            // 🎯 BUSCA TODAS AS MOVIMENTAÇÕES DO TURNO
+            // 🎯 BUSCA TODAS AS MOVIMENTAÇÕES PARA CALCULAR O FÍSICO
             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
-            $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
 
-            // --- CÁLCULO DINHEIRO (GAVETA) ---
-            $vCash = $movs->where('type', 'venda')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
+            // Dinheiro puro (Entradas)
+            $vCash = $movs->where('type', 'venda')->where('payment_method', 'dinheiro')->sum('amount');
             $ref = $movs->where('type', 'reforco')->sum('amount');
+
+            // Dinheiro puro (Saídas)
             $san = $movs->where('type', 'sangria')->sum('amount');
-            $estCash = $movs->where('type', 'estorno')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
+            $estCash = $movs->where('type', 'estorno')->where('payment_method', 'dinheiro')->sum('amount');
 
-            // --- CÁLCULO DIGITAL (BANCO) ---
-            $vDigital = $movs->where('type', 'venda')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
-            $estDigital = $movs->where('type', 'estorno')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
+            // 📊 CÁLCULO DO ESPERADO FÍSICO (O QUE TEM QUE ESTAR NA MÃO)
+            // Agora salvamos no banco o valor SEM o PIX.
+            $totalEsperadoFisico = ($session->opening_balance + $vCash + $ref) - ($san + $estCash);
 
-            // 📊 CÁLCULO DO ESPERADO UNIFICADO (O que o sistema diz que tem que ter no TOTAL)
-            // Esta é a soma que o seu modal exibe e que o operador informa (Dinheiro + PIX)
-            $totalEsperadoUnificado = ($session->opening_balance + $vCash + $vDigital + $ref) - ($san + $estCash + $estDigital);
+            // 📊 FATURAMENTO TOTAL DO SISTEMA (DINHEIRO + DIGITAL)
+            $vDigital = $movs->where('type', 'venda')->whereIn('payment_method', ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'])->sum('amount');
+            $faturamentoTotal = ($vCash - $estCash) + ($vDigital);
 
-            // 📊 FATURAMENTO LÍQUIDO DO DIA (Apenas para registro informativo)
-            $faturamentoTotalLiquido = ($vCash - $estCash) + ($vDigital - $estDigital);
-
-            // ⚖️ AUDITORIA (Comparação do informado contra o TOTAL esperado)
+            // ⚖️ AUDITORIA FINAL
             $actual = $request->actual_balance;
-            $difference = $actual - $totalEsperadoUnificado;
+            $difference = $actual - $totalEsperadoFisico;
 
-            // 💾 ATUALIZAR SESSÃO NO BANCO
+            // 💾 ATUALIZAR SESSÃO (Apenas colunas que já existem no seu print)
             $session->update([
                 'closing_balance' => $actual,
-                'expected_balance' => $totalEsperadoUnificado, // Salva o total geral para a auditoria bater 0.00
-                'total_vendas_sistema' => $faturamentoTotalLiquido, // Placar real de vendas
+                'expected_balance' => $totalEsperadoFisico, // AGORA SALVA 284.00 (O FÍSICO)
+                'total_vendas_sistema' => $faturamentoTotal, // SALVA 212.00 (O PLACAR DO DIA)
                 'status' => 'closed',
                 'closed_at' => now(),
                 'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento autorizado por: {$supervisor->name}"
             ]);
 
-            // Mensagem de feedback
             $msg = "Turno encerrado!";
             if (abs($difference) < 0.01) {
-                $msg .= " ✅ O Caixa (Dinheiro + Digital) bateu perfeitamente!";
+                $msg .= " Caixa bateu perfeitamente!";
             } else {
                 $msg .= ($difference < 0)
-                    ? " ⚠️ Diferença detectada! Falta: R$ " . number_format(abs($difference), 2, ',', '.')
-                    : " ⚠️ Diferença detectada! Sobrou: R$ " . number_format(abs($difference), 2, ',', '.');
+                    ? " Quebra detectada! Falta: R$ " . number_format(abs($difference), 2, ',', '.')
+                    : " Sobra detectada! Sobrou: R$ " . number_format(abs($difference), 2, ',', '.');
             }
 
             return redirect()->route('bar.cash.index')->with('success', $msg);

@@ -30,17 +30,9 @@ class BarSale extends Model
         return $this->belongsTo(User::class);
     }
 
+    // 🔴 ADICIONE ESTA FUNÇÃO AQUI:
     public function cashSession()
     {
         return $this->belongsTo(BarCashSession::class, 'bar_cash_session_id');
-    }
-
-    /**
-     * 💰 RELAÇÃO COM MOVIMENTAÇÕES DE CAIXA (PDV)
-     * Garante que o financeiro do balcão seja auditado corretamente.
-     */
-    public function movements()
-    {
-        return $this->hasMany(BarCashMovement::class, 'bar_sale_id');
     }
 }

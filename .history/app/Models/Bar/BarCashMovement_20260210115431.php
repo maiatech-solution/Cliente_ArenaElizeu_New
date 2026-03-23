@@ -8,14 +8,14 @@ use App\Models\User;
 class BarCashMovement extends Model
 {
     protected $table = 'bar_cash_movements';
-
+    
     protected $fillable = [
-        'bar_cash_session_id',
-        'user_id',
-        'bar_order_id',
+        'bar_cash_session_id', 
+        'user_id', 
+        'bar_order_id', 
         'type',             // venda, reforco, sangria, estorno
         'payment_method',    // money, pix, credit, debit
-        'amount',
+        'amount', 
         'description'
     ];
 
@@ -35,16 +35,12 @@ class BarCashMovement extends Model
         return $this->belongsTo(User::class);
     }
 
-
-    // Relacionamento com Mesas
+    /**
+     * Relacionamento com a Comanda/Pedido
+     * Adicionamos isso para o Controller conseguir buscar os dados da mesa
+     */
     public function barOrder()
     {
         return $this->belongsTo(BarOrder::class, 'bar_order_id');
-    }
-
-    // Relacionamento com PDV/Venda Direta
-    public function barSale()
-    {
-        return $this->belongsTo(BarSale::class, 'bar_sale_id');
     }
 }

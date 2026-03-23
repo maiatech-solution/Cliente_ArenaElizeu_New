@@ -35,6 +35,14 @@ class BarCashMovement extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Relacionamento com a Comanda/Pedido
+     * Adicionamos isso para o Controller conseguir buscar os dados da mesa
+     */
+    public function barOrder()
+    {
+        return $this->belongsTo(BarOrder::class, 'bar_order_id');
+    }
 
     // Relacionamento com Mesas
     public function barOrder()

@@ -42,46 +42,26 @@
             <div class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 border-l-4 border-l-red-600 shadow-2xl">
                 @php
                     $quebraTotal = 0;
-                    $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
-
                     foreach ($sessoes as $s) {
                         if ($s->status == 'closed') {
-                            // 🎯 Busca todas as movimentações da sessão para auditoria real
+                            // 🎯 BUSCA MOVIMENTAÇÕES PARA CALCULAR A QUEBRA REAL (SÓ DINHEIRO)
                             $movsTopo = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $s->id)->get();
 
-                            // 💵 DINHEIRO
                             $vCash = $movsTopo
                                 ->where('type', 'venda')
-                                ->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')
+                                ->where('payment_method', 'dinheiro')
                                 ->sum('amount');
-                            $estCash = $movsTopo
-                                ->where('type', 'estorno')
-                                ->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')
-                                ->sum('amount');
-
-                            // 💳 DIGITAL (PIX/Cartões)
-                            $vDigital = $movsTopo
-                                ->where('type', 'venda')
-                                ->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))
-                                ->sum('amount');
-                            $estDigital = $movsTopo
-                                ->where('type', 'estorno')
-                                ->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))
-                                ->sum('amount');
-
-                            // 🔺🔻 AJUSTES (Reforço/Sangria)
                             $ref = $movsTopo->where('type', 'reforco')->sum('amount');
                             $san = $movsTopo->where('type', 'sangria')->sum('amount');
+                            $estCash = $movsTopo
+                                ->where('type', 'estorno')
+                                ->where('payment_method', 'dinheiro')
+                                ->sum('amount');
 
-                            // 📊 CÁLCULO UNIFICADO (Dinheiro + Digital)
-                            // Agora o esperado é o montante total que o sistema rastreou
-                            $esperadoUnificado =
-                                $s->opening_balance + $vCash + $vDigital + $ref - ($san + $estCash + $estDigital);
+                            $espFisico = $s->opening_balance + $vCash + $ref - ($san + $estCash);
+                            $diffSessao = $s->closing_balance - $espFisico;
 
-                            // Diferença real entre o que o Maia contou e o que o sistema esperava no total
-                            $diffSessao = $s->closing_balance - $esperadoUnificado;
-
-                            // Se faltou dinheiro no cômputo geral, soma na quebra
+                            // Se faltou dinheiro na gaveta, soma na quebra
                             if ($diffSessao < -0.01) {
                                 $quebraTotal += abs($diffSessao);
                             }
@@ -90,9 +70,8 @@
                 @endphp
                 <p class="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Total de Quebras (Faltas)
                 </p>
-                <h3 class="text-3xl font-black text-white italic tracking-tighter">
-                    - R$ {{ number_format($quebraTotal, 2, ',', '.') }}
-                </h3>
+                <h3 class="text-3xl font-black text-white italic tracking-tighter">- R$
+                    {{ number_format($quebraTotal, 2, ',', '.') }}</h3>
             </div>
 
             <div
@@ -110,14 +89,14 @@
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-black/40 border-b border-gray-800">
-                        <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest">Início / Operador
-                        </th>
+                        <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest uppercase">Início
+                            / Operador</th>
                         <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Fundo
                         </th>
                         <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Vendas
                             Totais</th>
                         <th class="p-8 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">
-                            Esperado (Total)</th>
+                            Esperado (Gaveta)</th>
                         <th class="p-8 text-[10px] font-black text-white uppercase tracking-widest text-right italic">
                             Real Contado</th>
                         <th
@@ -128,46 +107,32 @@
                 <tbody class="divide-y divide-gray-800/50">
                     @forelse($sessoes as $index => $sessao)
                         @php
-                            // 🎯 RECONSTRUÇÃO DA MATEMÁTICA UNIFICADA
+                            // 🎯 BUSCA AS MOVIMENTAÇÕES EM TEMPO REAL PARA RECONSTRUIR O ESPERADO
                             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $sessao->id)->get();
-                            $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
 
-                            // 💵 Dinheiro
-                            $vCash = $movs
+                            $vendasCash = $movs
                                 ->where('type', 'venda')
-                                ->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')
+                                ->where('payment_method', 'dinheiro')
                                 ->sum('amount');
-                            $estCash = $movs
-                                ->where('type', 'estorno')
-                                ->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')
-                                ->sum('amount');
-
-                            // 💳 Digital
-                            $vDigital = $movs
-                                ->where('type', 'venda')
-                                ->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))
-                                ->sum('amount');
-                            $estDigital = $movs
-                                ->where('type', 'estorno')
-                                ->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))
-                                ->sum('amount');
-
-                            // 🔺🔻 Ajustes
                             $reforcosSessao = $movs->where('type', 'reforco')->sum('amount');
                             $sangriasSessao = $movs->where('type', 'sangria')->sum('amount');
+                            $estornosCash = $movs
+                                ->where('type', 'estorno')
+                                ->where('payment_method', 'dinheiro')
+                                ->sum('amount');
 
-                            // 📊 O NOVO "ESPERADO" (UNIFICADO: DINHEIRO + DIGITAL)
-                            $esperadoTotalTurno =
+                            // O "Esperado" para auditoria deve ser apenas o fluxo de DINHEIRO FÍSICO.
+                            // (Abertura + Vendas Dinheiro + Reforços) - (Sangrias + Estornos Dinheiro)
+                            $esperadoFisicoGaveta =
                                 $sessao->opening_balance +
-                                $vCash +
-                                $vDigital +
+                                $vendasCash +
                                 $reforcosSessao -
-                                ($sangriasSessao + $estCash + $estDigital);
+                                ($sangriasSessao + $estornosCash);
 
                             $diferenca = 0;
                             if ($sessao->status == 'closed') {
-                                // Comparamos o que foi digitado com o Total que o sistema rastreou
-                                $diferenca = $sessao->closing_balance - $esperadoTotalTurno;
+                                // Comparamos o que ele entregou (closing_balance) com o que o sistema rastreou de DINHEIRO
+                                $diferenca = $sessao->closing_balance - $esperadoFisicoGaveta;
                             }
                         @endphp
                         <tr
@@ -191,11 +156,12 @@
                                 R$ {{ number_format($sessao->opening_balance, 2, ',', '.') }}
                             </td>
                             <td class="p-8 text-right font-black text-blue-400 text-sm font-mono italic">
+                                {{-- Aqui continua sendo o faturamento total (Dinheiro + PIX) para o gestor ver quanto vendeu --}}
                                 R$ {{ number_format($sessao->vendas_turno, 2, ',', '.') }}
                             </td>
                             <td class="p-8 text-right font-bold text-gray-400 text-xs italic font-mono">
-                                {{-- Agora exibe o total (Dinheiro + PIX) esperado --}}
-                                R$ {{ number_format($esperadoTotalTurno, 2, ',', '.') }}
+                                {{-- Mostramos quanto deveria ter de DINHEIRO na gaveta --}}
+                                R$ {{ number_format($esperadoFisicoGaveta, 2, ',', '.') }}
                             </td>
                             <td class="p-8 text-right">
                                 @if ($sessao->status == 'closed')
@@ -204,7 +170,8 @@
                                     </span>
                                 @else
                                     <span
-                                        class="px-4 py-1.5 bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase rounded-full border border-orange-500/20 animate-pulse italic">Aberto</span>
+                                        class="px-4 py-1.5 bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase rounded-full border border-orange-500/20 animate-pulse italic">Turno
+                                        em Aberto</span>
                                 @endif
                             </td>
                             <td class="p-8 text-center">
@@ -226,7 +193,8 @@
                                                 class="text-red-500 font-black italic tracking-tighter text-lg font-mono">-
                                                 R$ {{ number_format(abs($diferenca), 2, ',', '.') }}</span>
                                             <span
-                                                class="text-[8px] text-red-600/50 uppercase font-black tracking-widest">Quebra</span>
+                                                class="text-[8px] text-red-600/50 uppercase font-black tracking-widest">Quebra
+                                                de Caixa</span>
                                         </div>
                                     @endif
                                 @else
