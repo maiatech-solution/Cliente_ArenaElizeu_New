@@ -29,7 +29,7 @@ class ConfigurationController extends Controller
     {
         $arenas = Arena::all();
         $targetId = $arena_id ?? $request->query('arena_id');
-
+        
         if (!$targetId) {
             return redirect()->route('admin.config.funcionamento');
         }
@@ -90,7 +90,7 @@ class ConfigurationController extends Controller
             // Percorre os 7 dias da semana (0 a 6)
             for ($i = 0; $i <= 6; $i++) {
                 $slotsForDay = $configsByDay[$i] ?? [];
-
+                
                 $activeSlots = collect($slotsForDay)->filter(function ($slot) {
                     return isset($slot['is_active']) && (bool)$slot['is_active'] && !empty($slot['start_time']);
                 })->map(function ($slot) {
@@ -110,7 +110,7 @@ class ConfigurationController extends Controller
             }
 
             DB::commit();
-
+            
             // Após salvar a regra, gera os slots físicos na tabela 'reservas'
             return $this->generateFixedReservas($request);
 
@@ -153,7 +153,7 @@ class ConfigurationController extends Controller
 
                 if ($config && !empty($config->config_data)) {
                     foreach ($config->config_data as $slot) {
-
+                        
                         $startTime = Carbon::parse($slot['start_time']);
                         $endTime = Carbon::parse($slot['end_time']);
 

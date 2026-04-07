@@ -113,7 +113,6 @@ class ConfigurationController extends Controller
 
             // Após salvar a regra, gera os slots físicos na tabela 'reservas'
             return $this->generateFixedReservas($request);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Erro no store de config: " . $e->getMessage());
@@ -202,12 +201,74 @@ class ConfigurationController extends Controller
 
             DB::commit();
             return redirect()->route('admin.config.index', ['arena_id' => $arenaId])
-                             ->with('success', 'Configuração aplicada e grade de horários (1h) gerada com sucesso!');
-
+                ->with('success', 'Configuração aplicada e grade de horários (1h) gerada com sucesso!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Erro na geração de slots: " . $e->getMessage());
             return redirect()->back()->with('error', 'Erro ao processar a geração de horários: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 🗑️ EXCLUIR/LIMPAR CONFIGURAÇÃO DE UM DIA DA SEMANA
+     * Só permite se não houver reservas (Pagos, Pendentes, etc) no futuro para esse dia.
+     */
+    /**
+     * 🗑️ EXCLUIR/LIMPAR CONFIGURAÇÃO DE UM DIA DA SEMANA (VIA AJAX)
+     */
+    public function deleteDayConfig(Request $request, $id)
+    {
+        try {
+            $config = ArenaConfiguration::findOrFail($id);
+            $arenaId = $config->arena_id;
+            $dayOfWeek = $config->day_of_week;
+
+            // 🔍 1. BUSCA POR RESERVAS ATIVAS (Tudo que NÃO for STATUS_FREE)
+            $reservasAtivas = Reserva::where('arena_id', $arenaId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('date', '>=', Carbon::today()->toDateString())
+                ->where('status', '!=', Reserva::STATUS_FREE)
+                ->count();
+
+            // 🛑 TRAVA DE SEGURANÇA (Retorno em JSON para o JavaScript ler)
+            if ($reservasAtivas > 0) {
+                $diaNome = [0 => 'Domingo', 1 => 'Segunda', 2 => 'Terça', 3 => 'Quarta', 4 => 'Quinta', 5 => 'Sexta', 6 => 'Sábado'][$dayOfWeek];
+                return response()->json([
+                    'success' => false,
+                    'message' => "⚠️ Não é possível desativar: Existem {$reservasAtivas} reservas agendadas para as próximas {$diaNome}s. Cancele ou mude as reservas antes de excluir este dia."
+                ], 400); // 400 indica um erro de solicitação do usuário
+            }
+
+            DB::beginTransaction();
+
+            // 2. Resetamos a configuração do dia (Regra)
+            $config->update([
+                'is_active' => false,
+                'config_data' => []
+            ]);
+
+            // 3. Limpamos os slots LIVRES
+            Reserva::where('arena_id', $arenaId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('date', '>=', Carbon::today()->toDateString())
+                ->where('status', Reserva::STATUS_FREE)
+                ->delete();
+
+            DB::commit();
+
+            // ✅ Retorno de Sucesso para o AJAX
+            return response()->json([
+                'success' => true,
+                'message' => 'Configuração removida e grade de horários limpa com sucesso!'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Erro ao excluir dia ID {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro técnico ao processar a exclusão. Verifique os logs.'
+            ], 500);
         }
     }
 }

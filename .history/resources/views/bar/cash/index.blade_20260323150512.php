@@ -121,10 +121,9 @@
                     <form action="{{ route('bar.cash.open') }}" method="POST" id="formOpenCash">
                         @csrf
 
-                        {{-- 🔑 CAMPOS DE ESPELHO AJUSTADOS --}}
-                        {{-- Enviamos o e-mail do próprio usuário se ele não for gestor --}}
+                        {{-- 🔑 CAMPOS DE ESPELHO --}}
                         <input type="hidden" name="supervisor_email"
-                            value="{{ in_array(auth()->user()->role, ['admin', 'gestor']) ? auth()->user()->email : auth()->user()->email }}">
+                            value="{{ in_array(auth()->user()->role, ['admin', 'gestor']) ? auth()->user()->email : '' }}">
                         <input type="hidden" name="supervisor_password">
 
                         <div class="text-left mb-6">
@@ -136,25 +135,24 @@
                                 class="w-full bg-black border-2 border-gray-800 rounded-3xl p-6 text-white text-3xl font-black text-center focus:border-green-500 outline-none transition-all shadow-inner font-mono">
                         </div>
 
-                        {{-- 🛡️ CAMPO DE AUTORIZAÇÃO FLEXÍVEL --}}
+                        {{-- 🛡️ CAMPO DE AUTORIZAÇÃO (Aberto para todos, mas com lógica inteligente) --}}
                         <div class="mb-6 p-4 bg-gray-800/50 border border-gray-800 rounded-3xl text-center">
                             @if (in_array(auth()->user()->role, ['admin', 'gestor']))
                                 {{-- Se for o dono/gestor logado --}}
                                 <span
-                                    class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest">
-                                    Confirme sua Senha de Gestor
-                                </span>
-                                <input type="password" id="password_direta_abertura" placeholder="DIGITE A SENHA"
-                                    class="w-full max-w-xs bg-black border border-gray-800 rounded-xl p-3 text-white text-center text-sm outline-none focus:border-orange-500 transition-all font-mono">
+                                    class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest">Confirme
+                                    sua Senha</span>
                             @else
-                                {{-- Se for o colaborador logado - MENSAGEM DE SUCESSO --}}
+                                {{-- Se for o colaborador logado --}}
                                 <span
-                                    class="text-[9px] font-black text-green-500 uppercase block mb-2 tracking-widest italic">
-                                    ✅ Abertura Liberada para Operador
-                                </span>
-                                {{-- Valor oculto para o JS validar o envio --}}
-                                <input type="hidden" id="password_direta_abertura" value="AUTO">
+                                    class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest animate-pulse">🔒
+                                    Senha do Gestor Necessária</span>
+                                <input type="email" id="email_supervisor_abertura" placeholder="E-MAIL DO GESTOR"
+                                    class="w-full max-w-xs bg-black border border-gray-800 rounded-xl p-3 text-white text-center text-[10px] mb-2 outline-none focus:border-orange-500 transition-all font-mono">
                             @endif
+
+                            <input type="password" id="password_direta_abertura" placeholder="DIGITE A SENHA"
+                                class="w-full max-w-xs bg-black border border-gray-800 rounded-xl p-3 text-white text-center text-sm outline-none focus:border-orange-500 transition-all font-mono">
                         </div>
 
                         {{-- 🚀 BOTÃO --}}
@@ -537,14 +535,11 @@
         }
 
         /**
-         * 4. 🚀 ENVIO COM AUTORIZAÇÃO (CORRIGIDA)
+         * 4. 🚀 ENVIO COM AUTORIZAÇÃO
          */
         function enviarComAutorizacao(idFormulario) {
             const form = document.getElementById(idFormulario);
             if (!form) return;
-
-            // Pega o cargo do usuário logado via Blade
-            const userRole = "{{ auth()->user()->role }}";
 
             const camposSenha = {
                 'formCloseCash': 'password_direta_gestor',
@@ -554,30 +549,16 @@
 
             const inputSenhaVisivel = document.getElementById(camposSenha[idFormulario]);
 
-            let passFinal = (inputSenhaVisivel && inputSenhaVisivel.value) ?
+            const passFinal = (inputSenhaVisivel && inputSenhaVisivel.value) ?
                 inputSenhaVisivel.value :
                 window.supervisorMemoriaPass;
 
-            // Pega o e-mail do supervisor ou o do próprio usuário se estiver vazio
-            const emailFinal = form.querySelector('input[name="supervisor_email"]')?.value ||
-                window.supervisorMemoriaEmail ||
-                "{{ auth()->user()->email }}";
+            const emailFinal = form.querySelector('input[name="supervisor_email"]')?.value || window.supervisorMemoriaEmail;
 
-            // ✨ LÓGICA DE LIBERAÇÃO PARA COLABORADOR
-            // Corrigido: usando a mesma variável declarada abaixo
-            const ehOperacaoDeCaixa = (idFormulario === 'formOpenCash' || idFormulario === 'formCloseCash');
-
-            if (userRole === 'colaborador' && ehOperacaoDeCaixa) {
-                if (!passFinal || passFinal.trim() === "") {
-                    passFinal = "AUTO"; // Valor dummy para o Controller aceitar
-                }
-            } else {
-                // Para Sangrias ou se for Gestor, a senha continua obrigatória
-                if (!passFinal || passFinal.trim() === "") {
-                    alert("⚠️ Autorização necessária: Digite a senha de GESTOR.");
-                    if (inputSenhaVisivel) inputSenhaVisivel.focus();
-                    return;
-                }
+            if (!passFinal || passFinal.trim() === "") {
+                alert("⚠️ Autorização necessária: Digite a senha de GESTOR.");
+                if (inputSenhaVisivel) inputSenhaVisivel.focus();
+                return;
             }
 
             const mEmail = form.querySelector('input[name="supervisor_email"]');

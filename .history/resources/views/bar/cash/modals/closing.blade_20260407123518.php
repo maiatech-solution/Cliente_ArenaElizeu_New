@@ -131,22 +131,25 @@
                             class="w-full bg-gray-800 border-none rounded-2xl p-4 text-white placeholder-gray-600 focus:ring-1 focus:ring-orange-600 outline-none text-xs h-[100px]"></textarea>
                     </div>
                 </div>
-                {{-- 🛡️ CAMPO DE AUTORIZAÇÃO (AJUSTADO PARA ABERTURA DIRETA) --}}
-                <div class="mb-6 p-4 bg-gray-800/50 border border-gray-800 rounded-3xl text-center">
-                    @if (auth()->user()->role === 'admin' || auth()->user()->role === 'gestor')
-                        {{-- Se for o dono/gestor logado --}}
-                        <span class="text-[9px] font-black text-orange-500 uppercase block mb-2 tracking-widest">
-                            Confirme sua Senha de Gestor
+
+                {{-- 🛡️ CAMPO DE AUTORIZAÇÃO UNIFICADO (AJUSTADO) --}}
+                <div class="mt-6 p-5 bg-orange-600/5 border border-orange-600/20 rounded-[2rem] text-center">
+                    @if (in_array(auth()->user()->role, ['admin', 'gestor']))
+                        <span class="text-[9px] font-black text-orange-500 uppercase block mb-3 tracking-[0.2em]">
+                            Confirmação de Segurança
                         </span>
-                        <input type="password" id="password_direta_abertura" placeholder="DIGITE A SENHA"
-                            class="w-full max-w-xs bg-black border border-gray-800 rounded-xl p-3 text-white text-center text-sm outline-none focus:border-orange-500 transition-all font-mono">
+                        <p class="text-[8px] text-gray-600 mb-2 uppercase font-bold italic">
+                            Gestor: {{ auth()->user()->name }}. Confirme sua senha.
+                        </p>
+                        <input type="password" id="password_direta_gestor" placeholder="SUA SENHA"
+                            class="w-full max-w-xs bg-black border border-gray-800 rounded-xl p-3 text-white text-center text-sm outline-none focus:border-orange-600 transition-all font-mono">
                     @else
-                        {{-- Se for o colaborador logado - MENSAGEM LIMPA E CAMPO OCULTO --}}
-                        <span class="text-[9px] font-black text-green-500 uppercase block mb-2 tracking-widest italic">
-                            ✅ Abertura de Turno Liberada para Operador
+                        {{-- Para colaborador, removemos o aviso de senha e o campo de e-mail --}}
+                        <span class="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-widest">
+                            Autorização Direta Habilitada
                         </span>
-                        {{-- Campo oculto com valor dummy para o JavaScript não barrar o envio --}}
-                        <input type="hidden" id="password_direta_abertura" value="AUTO">
+                        {{-- Campo oculto com valor "AUTO" para o JavaScript não barrar o envio --}}
+                        <input type="hidden" id="password_direta_gestor" value="AUTO">
                     @endif
                 </div>
 

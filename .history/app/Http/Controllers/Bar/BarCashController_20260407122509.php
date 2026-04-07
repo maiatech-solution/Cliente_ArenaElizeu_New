@@ -267,20 +267,15 @@ class BarCashController extends Controller
     }
 
     /**
-     * Abrir o Caixa (Ajustado para permitir Abertura Direta ou por Supervisor)
+     * Abrir o Caixa (Ajustado para permitir Multi-Caixa por Usuário)
      */
     public function open(Request $request)
     {
-        // 1. Definição do Autorizador
-        $autorizadorNome = auth()->user()->name;
+        // 🛡️ NOVO: Lógica flexível de autorização
+        // Se o JS não enviar supervisor_email, assumimos que é uma abertura direta permitida
+        $autorizadoPor = auth()->user()->name;
 
-        // 🛡️ Lógica de bypass: Só valida supervisor se NÃO for "AUTO"
-        if ($request->supervisor_password !== 'AUTO') {
-
-            if (!$request->supervisor_email || !$request->supervisor_password) {
-                return back()->with('error', '⚠️ Autorização necessária: As credenciais do supervisor não foram detectadas.');
-            }
-
+        if ($request->filled('supervisor_email') && $request->filled('supervisor_password')) {
             $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
 
             if (!$supervisor || !Hash::check($request->supervisor_password, $supervisor->password)) {
@@ -291,15 +286,15 @@ class BarCashController extends Controller
                 return back()->with('error', '⚠️ Acesso negado! Somente um Gestor ou Admin pode autorizar.');
             }
 
-            $autorizadorNome = $supervisor->name;
+            $autorizadoPor = $supervisor->name;
         }
 
-        // 2. Validação técnica
+        // Validação do saldo inicial (Sempre obrigatório)
         $request->validate([
             'opening_balance' => 'required|numeric|min:0',
         ]);
 
-        // 🛡️ Verifica se o usuário logado já tem um caixa aberto
+        // 🛡️ MUDANÇA CRÍTICA: Verifica apenas se ESTE USUÁRIO já tem um caixa aberto
         $exists = BarCashSession::where('status', 'open')
             ->where('user_id', auth()->id())
             ->exists();
@@ -308,14 +303,14 @@ class BarCashController extends Controller
             return back()->with('error', '⚠️ Você já possui um turno de caixa aberto no seu usuário!');
         }
 
-        // 🚀 Cria a sessão
+        // 🚀 Cria a sessão vinculada ao usuário logado
         BarCashSession::create([
-            'user_id' => auth()->id(),
-            'opening_balance' => $request->opening_balance,
+            'user_id'          => auth()->id(),
+            'opening_balance'  => $request->opening_balance,
             'expected_balance' => $request->opening_balance,
-            'status' => 'open',
-            'opened_at' => now(),
-            'notes' => "Abertura realizada por: {$autorizadorNome}"
+            'status'           => 'open',
+            'opened_at'        => now(),
+            'notes'            => "Abertura realizada por: {$autorizadoPor}"
         ]);
 
         return redirect()->route('bar.cash.index')->with('success', 'Turno iniciado com sucesso! Boas vendas.');
@@ -326,14 +321,10 @@ class BarCashController extends Controller
      */
     public function close(Request $request)
     {
-        // 1. Definição do Autorizador (Bypass para 'AUTO')
-        $autorizadorNome = auth()->user()->name;
+        // 🛡️ NOVO: Lógica flexível de autorização
+        $autorizadoPor = auth()->user()->name;
 
-        if ($request->supervisor_password !== 'AUTO') {
-            if (!$request->supervisor_email || !$request->supervisor_password) {
-                return back()->with('error', '⚠️ Autorização necessária.');
-            }
-
+        if ($request->filled('supervisor_email') && $request->filled('supervisor_password')) {
             $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
 
             if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
@@ -341,10 +332,10 @@ class BarCashController extends Controller
             }
 
             if (!in_array($supervisor->role, ['admin', 'gestor'])) {
-                return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
+                return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem autorizar.');
             }
 
-            $autorizadorNome = $supervisor->name;
+            $autorizadoPor = $supervisor->name;
         }
 
         // 2. Trava de Mesas Abertas (Mantido)
@@ -358,9 +349,8 @@ class BarCashController extends Controller
             'notes' => 'nullable|string|max:500'
         ]);
 
-        // 3. Processamento do Fechamento
-        // Passamos $autorizadorNome para dentro da transação via 'use'
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $autorizadorNome) {
+        // 3. Processamento do Fechamento em Transação
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $autorizadoPor) {
             $session = \App\Models\Bar\BarCashSession::where('status', 'open')
                 ->where('user_id', auth()->id())
                 ->lockForUpdate()
@@ -374,7 +364,7 @@ class BarCashController extends Controller
             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
             $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
 
-            // --- CÁLCULOS ---
+            // --- CÁLCULOS (DINHEIRO E DIGITAL) ---
             $vCash = $movs->where('type', 'venda')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
             $ref = $movs->where('type', 'reforco')->sum('amount');
             $san = $movs->where('type', 'sangria')->sum('amount');
@@ -383,9 +373,11 @@ class BarCashController extends Controller
             $vDigital = $movs->where('type', 'venda')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
             $estDigital = $movs->where('type', 'estorno')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
 
+            // 📊 CÁLCULO DO ESPERADO UNIFICADO
             $totalEsperadoUnificado = ($session->opening_balance + $vCash + $vDigital + $ref) - ($san + $estCash + $estDigital);
             $faturamentoTotalLiquido = ($vCash - $estCash) + ($vDigital - $estDigital);
 
+            // ⚖️ AUDITORIA
             $actual = $request->actual_balance;
             $difference = $actual - $totalEsperadoUnificado;
 
@@ -396,10 +388,10 @@ class BarCashController extends Controller
                 'total_vendas_sistema' => $faturamentoTotalLiquido,
                 'status' => 'closed',
                 'closed_at' => now(),
-                'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento realizado por: {$autorizadorNome}"
+                'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento realizado por: {$autorizadoPor}"
             ]);
 
-            // Feedback
+            // Mensagem de feedback
             $msg = "Turno encerrado!";
             if (abs($difference) < 0.01) {
                 $msg .= " ✅ O Caixa bateu perfeitamente!";

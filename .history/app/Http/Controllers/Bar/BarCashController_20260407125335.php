@@ -326,28 +326,22 @@ class BarCashController extends Controller
      */
     public function close(Request $request)
     {
-        // 1. Definição do Autorizador (Bypass para 'AUTO')
-        $autorizadorNome = auth()->user()->name;
-
-        if ($request->supervisor_password !== 'AUTO') {
-            if (!$request->supervisor_email || !$request->supervisor_password) {
-                return back()->with('error', '⚠️ Autorização necessária.');
-            }
-
-            $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
-
-            if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
-                return back()->with('error', '⚠️ Falha na autorização do supervisor.');
-            }
-
-            if (!in_array($supervisor->role, ['admin', 'gestor'])) {
-                return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
-            }
-
-            $autorizadorNome = $supervisor->name;
+        // 1. Validação do Supervisor (Mantido)
+        if (!$request->supervisor_email || !$request->supervisor_password) {
+            return back()->with('error', '⚠️ Autorização necessária.');
         }
 
-        // 2. Trava de Mesas Abertas (Mantido)
+        $supervisor = \App\Models\User::where('email', $request->supervisor_email)->first();
+
+        if (!$supervisor || !\Illuminate\Support\Facades\Hash::check($request->supervisor_password, $supervisor->password)) {
+            return back()->with('error', '⚠️ Falha na autorização do supervisor.');
+        }
+
+        if (!in_array($supervisor->role, ['admin', 'gestor'])) {
+            return back()->with('error', '⚠️ Acesso negado: Somente Gestores podem fechar caixas.');
+        }
+
+        // 2. Trava de Mesas Abertas
         $mesasAbertas = \App\Models\Bar\BarTable::where('status', 'occupied')->count();
         if ($mesasAbertas > 0) {
             return back()->with('error', "⚠️ Bloqueio: Existem mesas ocupadas no sistema.");
@@ -358,9 +352,8 @@ class BarCashController extends Controller
             'notes' => 'nullable|string|max:500'
         ]);
 
-        // 3. Processamento do Fechamento
-        // Passamos $autorizadorNome para dentro da transação via 'use'
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $autorizadorNome) {
+        // 3. Processamento do Fechamento em Transação
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $supervisor) {
             $session = \App\Models\Bar\BarCashSession::where('status', 'open')
                 ->where('user_id', auth()->id())
                 ->lockForUpdate()
@@ -374,35 +367,41 @@ class BarCashController extends Controller
             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
             $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
 
-            // --- CÁLCULOS ---
+            // --- CÁLCULO DINHEIRO (GAVETA) ---
             $vCash = $movs->where('type', 'venda')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
             $ref = $movs->where('type', 'reforco')->sum('amount');
             $san = $movs->where('type', 'sangria')->sum('amount');
             $estCash = $movs->where('type', 'estorno')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
 
+            // --- CÁLCULO DIGITAL (BANCO) ---
             $vDigital = $movs->where('type', 'venda')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
             $estDigital = $movs->where('type', 'estorno')->filter(fn($m) => in_array(strtolower($m->payment_method), $metodosDigitais))->sum('amount');
 
+            // 📊 CÁLCULO DO ESPERADO UNIFICADO (O que o sistema diz que tem que ter no TOTAL)
+            // Esta é a soma que o seu modal exibe e que o operador informa (Dinheiro + PIX)
             $totalEsperadoUnificado = ($session->opening_balance + $vCash + $vDigital + $ref) - ($san + $estCash + $estDigital);
+
+            // 📊 FATURAMENTO LÍQUIDO DO DIA (Apenas para registro informativo)
             $faturamentoTotalLiquido = ($vCash - $estCash) + ($vDigital - $estDigital);
 
+            // ⚖️ AUDITORIA (Comparação do informado contra o TOTAL esperado)
             $actual = $request->actual_balance;
             $difference = $actual - $totalEsperadoUnificado;
 
             // 💾 ATUALIZAR SESSÃO NO BANCO
             $session->update([
                 'closing_balance' => $actual,
-                'expected_balance' => $totalEsperadoUnificado,
-                'total_vendas_sistema' => $faturamentoTotalLiquido,
+                'expected_balance' => $totalEsperadoUnificado, // Salva o total geral para a auditoria bater 0.00
+                'total_vendas_sistema' => $faturamentoTotalLiquido, // Placar real de vendas
                 'status' => 'closed',
                 'closed_at' => now(),
-                'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento realizado por: {$autorizadorNome}"
+                'notes' => ($request->notes ? $request->notes . " | " : "") . "Fechamento autorizado por: {$supervisor->name}"
             ]);
 
-            // Feedback
+            // Mensagem de feedback
             $msg = "Turno encerrado!";
             if (abs($difference) < 0.01) {
-                $msg .= " ✅ O Caixa bateu perfeitamente!";
+                $msg .= " ✅ O Caixa (Dinheiro + Digital) bateu perfeitamente!";
             } else {
                 $msg .= ($difference < 0)
                     ? " ⚠️ Diferença detectada! Falta: R$ " . number_format(abs($difference), 2, ',', '.')

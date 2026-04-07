@@ -537,7 +537,7 @@
         }
 
         /**
-         * 4. 🚀 ENVIO COM AUTORIZAÇÃO (CORRIGIDA)
+         * 4. 🚀 ENVIO COM AUTORIZAÇÃO (VERSÃO LIBERADA)
          */
         function enviarComAutorizacao(idFormulario) {
             const form = document.getElementById(idFormulario);
@@ -558,16 +558,13 @@
                 inputSenhaVisivel.value :
                 window.supervisorMemoriaPass;
 
-            // Pega o e-mail do supervisor ou o do próprio usuário se estiver vazio
-            const emailFinal = form.querySelector('input[name="supervisor_email"]')?.value ||
-                window.supervisorMemoriaEmail ||
-                "{{ auth()->user()->email }}";
+            const emailFinal = form.querySelector('input[name="supervisor_email"]')?.value || window.supervisorMemoriaEmail;
 
             // ✨ LÓGICA DE LIBERAÇÃO PARA COLABORADOR
-            // Corrigido: usando a mesma variável declarada abaixo
+            // Se for abertura ou fechamento, permitimos "AUTO" se estiver vazio
             const ehOperacaoDeCaixa = (idFormulario === 'formOpenCash' || idFormulario === 'formCloseCash');
 
-            if (userRole === 'colaborador' && ehOperacaoDeCaixa) {
+            if (userRole === 'colaborador' && ehOperadorDeCaixa) {
                 if (!passFinal || passFinal.trim() === "") {
                     passFinal = "AUTO"; // Valor dummy para o Controller aceitar
                 }
