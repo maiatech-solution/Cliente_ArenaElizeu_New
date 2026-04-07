@@ -2118,6 +2118,7 @@
                 const form = document.getElementById(formId);
                 if (!form) return;
 
+                // Impede múltiplas vinculações do mesmo evento (Idempotência no Front)
                 if (form.dataset.ajaxBound === "1") return;
                 form.dataset.ajaxBound = "1";
 
@@ -2126,8 +2127,9 @@
                 form.onsubmit = function(e) {
                     e.preventDefault();
 
+                    // 🛡️ TRAVA 1: Impede até o início da lógica se já houver um envio em curso
                     if (window.caixaProcessandoGlobal[formId]) {
-                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo para:", formId);
+                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo no Front-end para:", formId);
                         return false;
                     }
                     window.caixaProcessandoGlobal[formId] = true;
@@ -2136,18 +2138,10 @@
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
 
-                        // 🛡️ LIMPEZA AGRESSIVA: Fecha o modal via função e também força via CSS
+                        // 1. Limpeza imediata antes de iniciar
                         if (typeof window.fecharModalAutorizacao === 'function') {
                             window.fecharModalAutorizacao();
                         }
-
-                        // Força o desaparecimento de qualquer overlay de modal no DOM imediatamente
-                        const modais = document.querySelectorAll(
-                            '.modal, .modal-backdrop, #modalSenha, [id*="Autorizacao"]');
-                        modais.forEach(m => {
-                            m.style.display = 'none';
-                            m.classList.add('hidden');
-                        });
 
                         console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
 
@@ -2176,21 +2170,28 @@
                             })
                             .then(res => res.json())
                             .then(json => {
-                                // Garante que o modal suma de novo após a resposta
+                                // 2. Garante que o modal de senha feche ANTES de qualquer alerta de resposta
                                 if (typeof window.fecharModalAutorizacao === 'function') {
                                     window.fecharModalAutorizacao();
                                 }
 
-                                if (json.success) {
-                                    form.dataset.finalizado = "true";
+                                const originalAlert = window.alert;
+                                window.alert = function(msg) {
+                                    const m = msg.toLowerCase();
+                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade") || m
+                                        .includes("anteriormente")) {
+                                        return;
+                                    }
+                                    if (json.success) form.dataset.finalizado = "true";
+                                    originalAlert(msg);
+                                };
 
-                                    // 🔥 O SEGREDO: Aumentamos para 400ms.
-                                    // Esse tempo é necessário para o navegador remover o fundo preto e o modal
-                                    // da tela ANTES do alert() travar tudo.
+                                if (json.success) {
+                                    // Pequeno delay (100ms) para dar tempo ao DOM de esconder o modal antes do alert travar tudo
                                     setTimeout(() => {
                                         alert(json.message);
                                         window.location.reload();
-                                    }, 400);
+                                    }, 150);
                                 } else {
                                     if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
                                         window.location.reload();
@@ -2205,7 +2206,7 @@
                                             btn.innerText = btn.dataset.originalText || "CONCLUIR";
                                         }
                                         if (spinner) spinner.classList.add('hidden');
-                                    }, 400);
+                                    }, 150);
                                 }
                             })
                             .catch(err => {
@@ -2218,25 +2219,24 @@
                             });
                     };
 
-                    // --- LÓGICA DE PERMISSÕES COM BYPASS PARA DÍVIDA ---
+                    // --- LÓGICA DE PERMISSÕES REVISADA ---
 
-                    // ✨ CORREÇÃO 4: Se for o form de Dívida, ignora Role e restrições. Envia direto.
-                    if (formId === 'debtForm') {
-                        enviarParaOServidor();
-                        return false;
-                    }
-
+                    // Ações que EXIGEM senha de supervisor para colaboradores
+                    // Removi 'debtForm' (Pagar Depois) daqui para o colaborador ter autonomia
                     const acoesRestritas = ['noShowForm', 'transactionForm', 'reopenCashForm'];
 
                     if (userRole === 'colaborador' && acoesRestritas.includes(formId)) {
+                        // Ações sensíveis: Pede autorização
                         window.requisitarAutorizacao(token => {
                             if (token) {
                                 enviarParaOServidor(token);
                             } else {
+                                // Se cancelou a senha, libera a trava
                                 window.caixaProcessandoGlobal[formId] = false;
                             }
                         });
                     } else {
+                        // Se for Admin OU Colaborador fazendo (Pagamento, Pagar Depois, Abertura, Fechamento), envia direto
                         enviarParaOServidor();
                     }
 

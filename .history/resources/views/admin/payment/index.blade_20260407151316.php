@@ -2136,18 +2136,10 @@
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
 
-                        // 🛡️ LIMPEZA AGRESSIVA: Fecha o modal via função e também força via CSS
+                        // ✨ CORREÇÃO 1: Fecha qualquer modal de autorização/senha antes mesmo do fetch iniciar
                         if (typeof window.fecharModalAutorizacao === 'function') {
                             window.fecharModalAutorizacao();
                         }
-
-                        // Força o desaparecimento de qualquer overlay de modal no DOM imediatamente
-                        const modais = document.querySelectorAll(
-                            '.modal, .modal-backdrop, #modalSenha, [id*="Autorizacao"]');
-                        modais.forEach(m => {
-                            m.style.display = 'none';
-                            m.classList.add('hidden');
-                        });
 
                         console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
 
@@ -2176,21 +2168,19 @@
                             })
                             .then(res => res.json())
                             .then(json => {
-                                // Garante que o modal suma de novo após a resposta
+                                // ✨ CORREÇÃO 2: Garante o fechamento do modal novamente após a resposta do servidor
                                 if (typeof window.fecharModalAutorizacao === 'function') {
                                     window.fecharModalAutorizacao();
                                 }
 
                                 if (json.success) {
                                     form.dataset.finalizado = "true";
-
-                                    // 🔥 O SEGREDO: Aumentamos para 400ms.
-                                    // Esse tempo é necessário para o navegador remover o fundo preto e o modal
-                                    // da tela ANTES do alert() travar tudo.
+                                    // ✨ CORREÇÃO 3: Delay de 150ms para o navegador processar o fechamento dos modais
+                                    // antes que o alert() congele a renderização da página.
                                     setTimeout(() => {
                                         alert(json.message);
                                         window.location.reload();
-                                    }, 400);
+                                    }, 150);
                                 } else {
                                     if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
                                         window.location.reload();
@@ -2205,7 +2195,7 @@
                                             btn.innerText = btn.dataset.originalText || "CONCLUIR";
                                         }
                                         if (spinner) spinner.classList.add('hidden');
-                                    }, 400);
+                                    }, 150);
                                 }
                             })
                             .catch(err => {

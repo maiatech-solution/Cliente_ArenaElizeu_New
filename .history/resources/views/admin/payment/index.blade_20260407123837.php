@@ -2118,6 +2118,7 @@
                 const form = document.getElementById(formId);
                 if (!form) return;
 
+                // Impede múltiplas vinculações do mesmo evento (Idempotência no Front)
                 if (form.dataset.ajaxBound === "1") return;
                 form.dataset.ajaxBound = "1";
 
@@ -2126,8 +2127,9 @@
                 form.onsubmit = function(e) {
                     e.preventDefault();
 
+                    // 🛡️ TRAVA 1: Impede até o início da lógica se já houver um envio em curso
                     if (window.caixaProcessandoGlobal[formId]) {
-                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo para:", formId);
+                        console.warn("🚫 [TRAVA] Bloqueio de clique duplo no Front-end para:", formId);
                         return false;
                     }
                     window.caixaProcessandoGlobal[formId] = true;
@@ -2135,19 +2137,6 @@
                     const enviarParaOServidor = (tokenRecebido = null) => {
                         const btn = document.getElementById(btnId);
                         const spinner = document.getElementById(spinnerId);
-
-                        // 🛡️ LIMPEZA AGRESSIVA: Fecha o modal via função e também força via CSS
-                        if (typeof window.fecharModalAutorizacao === 'function') {
-                            window.fecharModalAutorizacao();
-                        }
-
-                        // Força o desaparecimento de qualquer overlay de modal no DOM imediatamente
-                        const modais = document.querySelectorAll(
-                            '.modal, .modal-backdrop, #modalSenha, [id*="Autorizacao"]');
-                        modais.forEach(m => {
-                            m.style.display = 'none';
-                            m.classList.add('hidden');
-                        });
 
                         console.log("🚀 [DEBUG] Iniciando envio do Form:", formId);
 
@@ -2176,36 +2165,41 @@
                             })
                             .then(res => res.json())
                             .then(json => {
-                                // Garante que o modal suma de novo após a resposta
-                                if (typeof window.fecharModalAutorizacao === 'function') {
-                                    window.fecharModalAutorizacao();
-                                }
+                                console.log("📥 [DEBUG] Resposta do Servidor:", json);
+
+                                // 🛡️ TRAVA 2: Silenciar alertas se a página já estiver finalizando ou for erro de duplicidade
+                                const originalAlert = window.alert;
+                                window.alert = function(msg) {
+                                    const m = msg.toLowerCase();
+                                    if (form.dataset.finalizado === "true" || m.includes("duplicidade") || m
+                                        .includes("anteriormente")) {
+                                        console.log("🔕 [SILENCIADOR] Alerta duplicado ignorado.");
+                                        return;
+                                    }
+                                    if (json.success) form.dataset.finalizado = "true";
+                                    originalAlert(msg);
+                                };
 
                                 if (json.success) {
-                                    form.dataset.finalizado = "true";
-
-                                    // 🔥 O SEGREDO: Aumentamos para 400ms.
-                                    // Esse tempo é necessário para o navegador remover o fundo preto e o modal
-                                    // da tela ANTES do alert() travar tudo.
-                                    setTimeout(() => {
-                                        alert(json.message);
-                                        window.location.reload();
-                                    }, 400);
+                                    alert(json.message);
+                                    window.location.reload();
                                 } else {
+                                    // Se o erro for DUPLICIDADE, tratamos como sucesso (pois o registro já existe)
                                     if (json.message && json.message.includes('DUPLICATE_PAYMENT')) {
+                                        console.log("✅ [AUTO-RESOLVE] Registro já processado pelo servidor.");
                                         window.location.reload();
                                         return;
                                     }
 
-                                    setTimeout(() => {
-                                        alert(json.message || 'Erro ao processar.');
-                                        window.caixaProcessandoGlobal[formId] = false;
-                                        if (btn) {
-                                            btn.disabled = false;
-                                            btn.innerText = btn.dataset.originalText || "CONCLUIR";
-                                        }
-                                        if (spinner) spinner.classList.add('hidden');
-                                    }, 400);
+                                    alert(json.message || 'Erro ao processar.');
+
+                                    // 🔓 LIBERAÇÃO: Só destrava se NÃO for sucesso, permitindo corrigir erro de digitação
+                                    window.caixaProcessandoGlobal[formId] = false;
+                                    if (btn) {
+                                        btn.disabled = false;
+                                        btn.innerText = btn.dataset.originalText || "CONCLUIR";
+                                    }
+                                    if (spinner) spinner.classList.add('hidden');
                                 }
                             })
                             .catch(err => {
@@ -2218,21 +2212,16 @@
                             });
                     };
 
-                    // --- LÓGICA DE PERMISSÕES COM BYPASS PARA DÍVIDA ---
+                    const acoesCriticas = ['debtForm', 'noShowForm', 'transactionForm', 'openCashForm', 'closeCashForm',
+                        'paymentForm'
+                    ];
 
-                    // ✨ CORREÇÃO 4: Se for o form de Dívida, ignora Role e restrições. Envia direto.
-                    if (formId === 'debtForm') {
-                        enviarParaOServidor();
-                        return false;
-                    }
-
-                    const acoesRestritas = ['noShowForm', 'transactionForm', 'reopenCashForm'];
-
-                    if (userRole === 'colaborador' && acoesRestritas.includes(formId)) {
+                    if (acoesCriticas.includes(formId) && userRole === 'colaborador') {
                         window.requisitarAutorizacao(token => {
                             if (token) {
                                 enviarParaOServidor(token);
                             } else {
+                                // Se cancelou a senha, destrava o formId para permitir tentar de novo
                                 window.caixaProcessandoGlobal[formId] = false;
                             }
                         });
