@@ -3,20 +3,17 @@
 
         {{-- 🛡️ HEADER & FILTROS --}}
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 mb-10">
-            {{-- Título e Botão Voltar --}}
-            <div class="flex items-center gap-5">
+            <div>
                 <a href="{{ route('bar.reports.index') }}"
                     class="p-3 bg-gray-900 hover:bg-gray-800 text-orange-500 rounded-2xl border border-gray-800 transition-all group shadow-lg">
                     <span class="group-hover:-translate-x-1 transition-transform inline-block">◀</span>
                 </a>
-                <div>
-                    <h1 class="text-4xl font-black text-white uppercase tracking-tighter italic leading-none">
-                        Performance de <span class="text-orange-600">Operadores</span>
-                    </h1>
-                    <p class="text-gray-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-1 italic">
-                        Análise de produtividade e cálculo de comissões
-                    </p>
-                </div>
+                <h1 class="text-4xl font-black text-white uppercase tracking-tighter italic leading-none">
+                    Performance de <span class="text-orange-500">Operadores</span>
+                </h1>
+                <p class="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-2 italic">
+                    Análise de produtividade
+                </p>
             </div>
 
             {{-- 🔍 FORMULÁRIO DE FILTRO --}}
