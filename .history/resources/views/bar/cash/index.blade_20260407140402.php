@@ -281,75 +281,66 @@
                 </p>
             </div>
         @else
-            {{-- CARDS FINANCEIROS (VISÍVEIS APENAS PARA GESTORES) --}}
-            @if (in_array(auth()->user()->role, ['admin', 'gestor']))
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10 animate-in fade-in duration-500">
+            {{-- CARDS FINANCEIROS --}}
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
 
-                    {{-- 💵 DINHEIRO EM GAVETA --}}
-                    <div
-                        class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 relative shadow-2xl border-l-4 border-l-emerald-500">
-                        <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
-                            Dinheiro em Gaveta
-                        </span>
-                        <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                            R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}
-                        </span>
-                    </div>
-
-                    {{-- ⚡ TOTAL DIGITAL --}}
-                    <div
-                        class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-cyan-400">
-                        <span class="text-[10px] font-black text-cyan-400 uppercase tracking-widest block mb-2 italic">
-                            Total Digital
-                        </span>
-                        <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                            R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
-                        </span>
-                    </div>
-
-                    {{-- 🔻 TOTAL DE SANGRIAS --}}
-                    <div
-                        class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-red-500">
-                        <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
-                            Sangrias / Saídas
-                        </span>
-                        <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                            R$ {{ number_format($sangrias ?? 0, 2, ',', '.') }}
-                        </span>
-                    </div>
-
-                    {{-- 🚫 TOTAL ESTORNADO --}}
-                    <div
-                        class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ ($totalEstornado ?? 0) > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
-                        <span
-                            class="text-[10px] font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">
-                            Total Estornado
-                        </span>
-                        <span
-                            class="text-4xl font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
-                            R$ {{ number_format($totalEstornado ?? 0, 2, ',', '.') }}
-                        </span>
-                    </div>
-
-                    {{-- 💰 CARD DE APOIO: TOTAL LÍQUIDO DO TURNO --}}
-                    <div
-                        class="bg-gray-800/50 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl border-l-4 border-l-white/20">
-                        <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">
-                            Faturamento Real
-                        </span>
-                        <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
-                            R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
-                        </span>
-                    </div>
-                </div>
-            @else
-                {{-- MENSAGEM PARA COLABORADORES --}}
-                <div class="mb-10 p-6 bg-gray-900/40 border border-gray-800 rounded-[2rem] text-center">
-                    <span class="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] italic">
-                        🔒 Totais financeiros restritos ao gestor (Modo Conferência Cega)
+                {{-- 💵 DINHEIRO EM GAVETA --}}
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 relative shadow-2xl border-l-4 border-l-emerald-500">
+                    <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
+                        Dinheiro em Gaveta
+                    </span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($dinheiroGeral ?? 0, 2, ',', '.') }}
                     </span>
                 </div>
-            @endif
+
+                {{-- ⚡ TOTAL DIGITAL (Líquido: PIX + Cartões) --}}
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-cyan-400">
+                    <span class="text-[10px] font-black text-cyan-400 uppercase tracking-widest block mb-2 italic">
+                        Total Digital
+                    </span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($faturamentoDigital ?? 0, 2, ',', '.') }}
+                    </span>
+                </div>
+
+                {{-- 🔻 TOTAL DE SANGRIAS --}}
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 border-l-red-500">
+                    <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2 italic">
+                        Sangrias / Saídas
+                    </span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($sangrias ?? 0, 2, ',', '.') }}
+                    </span>
+                </div>
+
+                {{-- 🚫 TOTAL ESTORNADO --}}
+                <div
+                    class="bg-gray-900 p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl border-l-4 {{ ($totalEstornado ?? 0) > 0 ? 'border-l-orange-600' : 'border-l-gray-700 opacity-50' }}">
+                    <span
+                        class="text-[10px] font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-orange-500' : 'text-gray-500' }} uppercase tracking-widest block mb-2 italic">
+                        Total Estornado
+                    </span>
+                    <span
+                        class="text-4xl font-black {{ ($totalEstornado ?? 0) > 0 ? 'text-white' : 'text-gray-600' }} italic tracking-tighter font-mono">
+                        R$ {{ number_format($totalEstornado ?? 0, 2, ',', '.') }}
+                    </span>
+                </div>
+
+                {{-- 💰 CARD DE APOIO: TOTAL LÍQUIDO DO TURNO --}}
+                <div
+                    class="bg-gray-800/50 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl border-l-4 border-l-white/20">
+                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">
+                        Faturamento Real
+                    </span>
+                    <span class="text-4xl font-black text-white italic tracking-tighter font-mono">
+                        R$ {{ number_format($totalBruto ?? 0, 2, ',', '.') }}
+                    </span>
+                </div>
+            </div>
 
             {{-- HISTÓRICO DE MOVIMENTAÇÕES --}}
             <div class="bg-gray-900 rounded-[3rem] border border-gray-800 overflow-hidden shadow-2xl">
