@@ -184,7 +184,17 @@ class BarReportController extends Controller
 
 
 
-
+        // DEBUG: Vamos ver o que está saindo do Controller para o Suco (ID 3)
+        // Vamos ver os 3 primeiros itens do ranking e seus preços de cadastro
+        dd($ranking->take(3)->map(function ($item) {
+            return [
+                'nome' => $item->product->name,
+                'custo_cadastro' => $item->product->purchase_price,
+                'venda_cadastro' => $item->product->sale_price,
+                'margem_enviada' => $item->margin_percent,
+                'lucro_enviado' => $item->total_profit
+            ];
+        })->toArray());
 
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
     }

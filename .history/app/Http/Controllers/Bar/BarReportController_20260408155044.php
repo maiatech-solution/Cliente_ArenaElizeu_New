@@ -182,9 +182,10 @@ class BarReportController extends Controller
             ];
         })->sortByDesc('total_qty');
 
+        // DEBUG: Vamos ver o que está saindo do Controller para o Suco (ID 3)
+        dd($ranking->where('product.name', 'LIKE', '%jojo%')->first());
 
-
-
+        return view('bar.reports.products', compact('ranking', 'mesReferencia'));
 
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
     }

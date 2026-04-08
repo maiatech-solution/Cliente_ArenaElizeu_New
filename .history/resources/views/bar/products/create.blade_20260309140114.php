@@ -193,14 +193,14 @@
                         <div class="flex justify-between items-center mb-2">
                             <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Preço de
                                 Venda (R$)</label>
-                            <!-- <div class="flex gap-1">
+                            <div class="flex gap-1">
                                 <button type="button" onclick="aplicarMarkup(30)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+30%</button>
                                 <button type="button" onclick="aplicarMarkup(50)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+50%</button>
                                 <button type="button" onclick="aplicarMarkup(100)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+100%</button>
-                            </div> -->
+                            </div>
                         </div>
                         <input type="number" step="0.01" name="sale_price" id="sale_price"
                             value="{{ old('sale_price') }}" required
@@ -209,14 +209,14 @@
                     </div>
 
                     {{-- 📊 WIDGET ANALÍTICO EVOLUÍDO --}}
-                    <!-- <div class="md:col-span-2 p-5 bg-black/40 border border-gray-800 rounded-[2rem] mt-2 shadow-inner">
+                    <div class="md:col-span-2 p-5 bg-black/40 border border-gray-800 rounded-[2rem] mt-2 shadow-inner">
                         <div class="flex flex-col md:flex-row items-center justify-between gap-6">
                             <div class="flex items-center gap-4">
                                 <div id="margem_status_bg"
                                     class="w-14 h-14 rounded-2xl bg-gray-950 border border-gray-800 flex items-center justify-center transition-all duration-500">
                                     <span id="margem_emoji" class="text-2xl">💰</span>
                                 </div>
-                                 <div>
+                                <div>
                                     <p
                                         class="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 italic">
                                         Análise de Precificação</p>
@@ -254,7 +254,7 @@
                                     class="w-full md:w-32 bg-gray-950 border-gray-800 rounded-xl p-3 text-xs text-orange-500 font-black text-center outline-none focus:border-orange-500 transition-all">
                             </div>
                         </div>
-                    </div> -->
+                    </div>
 
                     {{-- ESTOQUE --}}
                     <div x-show="!isCombo" class="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">

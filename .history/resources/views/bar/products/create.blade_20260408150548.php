@@ -193,14 +193,14 @@
                         <div class="flex justify-between items-center mb-2">
                             <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Preço de
                                 Venda (R$)</label>
-                            <!-- <div class="flex gap-1">
+                            <div class="flex gap-1">
                                 <button type="button" onclick="aplicarMarkup(30)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+30%</button>
                                 <button type="button" onclick="aplicarMarkup(50)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+50%</button>
                                 <button type="button" onclick="aplicarMarkup(100)"
                                     class="text-[8px] bg-gray-800 text-gray-500 px-2 py-1 rounded-md hover:bg-orange-600 hover:text-white transition-all font-black">+100%</button>
-                            </div> -->
+                            </div>
                         </div>
                         <input type="number" step="0.01" name="sale_price" id="sale_price"
                             value="{{ old('sale_price') }}" required

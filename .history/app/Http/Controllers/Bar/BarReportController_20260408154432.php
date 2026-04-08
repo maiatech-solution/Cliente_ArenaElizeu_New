@@ -182,10 +182,6 @@ class BarReportController extends Controller
             ];
         })->sortByDesc('total_qty');
 
-
-
-
-
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
     }
 

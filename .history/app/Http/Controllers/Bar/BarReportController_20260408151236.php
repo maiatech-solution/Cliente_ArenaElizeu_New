@@ -65,22 +65,11 @@ class BarReportController extends Controller
         // Nota: Como no Voucher o total_value foi zerado para o caixa, aqui você pode somar
         // o subtotal dos itens se quiser ver o valor bruto, ou apenas contar as ocorrências.
         // Se o total_value no banco estiver zerado, use a soma dos itens:
-        // Recupera os IDs para o cálculo detalhado
         $orderVoucherIds = $queryVouchersOrders->pluck('id');
         $saleVoucherIds = $queryVouchersSales->pluck('id');
 
-        // Para Mesas (Orders), somamos o subtotal que existe lá
-        $valorVoucherMesas = BarOrderItem::whereIn('bar_order_id', $orderVoucherIds)->sum('subtotal');
-
-        // Para Balcão (Sales), calculamos manual: Quantidade x Preço Unitário
-        // Isso evita o erro de "Column not found: subtotal"
-        $valorVoucherBalcao = BarSaleItem::whereIn('bar_sale_id', $saleVoucherIds)
-            ->get()
-            ->sum(function ($item) {
-                return $item->quantity * $item->unit_price;
-            });
-
-        $totalVouchersMes = $valorVoucherMesas + $valorVoucherBalcao;
+        $totalVouchersMes = BarOrderItem::whereIn('bar_order_id', $orderVoucherIds)->sum('subtotal')
+            + BarSaleItem::whereIn('bar_sale_id', $saleVoucherIds)->sum('subtotal');
 
         // --- 3. VOLUME DE ITENS (Tudo que saiu do estoque, inclusive cortesia) ---
         $allOrderIds = BarOrder::whereIn('status', ['paid', 'pago'])
@@ -113,7 +102,7 @@ class BarReportController extends Controller
     }
 
     /**
-     * Relatório de Ranking de Produtos (Ajustado para Vouchers/Cortesias)
+     * RANKING DE PRODUTOS + MARGEM DE LUCRO
      */
     public function products(Request $request)
     {
@@ -121,10 +110,7 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        $user = auth()->user();
-        $isAdmin = in_array($user->role, ['admin', 'gestor']);
-
-        // 1. Pegamos todas as ordens (Mesas) e vendas (PDV) finalizadas
+        // 1. Pegamos as Ordens e Vendas que REALMENTE foram pagas
         $orders = BarOrder::whereIn('status', ['paid', 'pago'])
             ->whereBetween('updated_at', [$startDate, $endDate])
             ->with('items.product')
@@ -135,88 +121,40 @@ class BarReportController extends Controller
             ->with('items.product')
             ->get();
 
-        // 2. Agrupamos os itens identificando o que é venda paga e o que é Voucher
-        $rankingData = collect();
+        // 2. Unificamos todos os itens em uma única coleção para contar as 17 unidades
+        $allItems = $orders->flatMap->items->concat($sales->flatMap->items);
 
-        // Processamento de Mesas
-        foreach ($orders as $order) {
-            $isVoucher = str_contains(strtoupper($order->payment_method), 'VOUCHER');
-            foreach ($order->items as $item) {
-                $this->aggregateItem($rankingData, $item, $isVoucher);
-            }
-        }
+        // 3. Calculamos o Desconto Total (Diferença entre Itens e o que foi Pago)
+        // Isso garante que o faturamento final do ranking seja R$ 194,00
+        $totalBruto = $allItems->sum(fn($i) => $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0));
+        $totalPagoReal = $orders->sum('total_value') + $sales->sum('total_value');
+        $descontoGlobal = $totalBruto - $totalPagoReal;
 
-        // Processamento de Balcão (PDV)
-        foreach ($sales as $sale) {
-            $isVoucher = strtoupper($sale->payment_method) === 'VOUCHER';
-            foreach ($sale->items as $item) {
-                $this->aggregateItem($rankingData, $item, $isVoucher);
-            }
-        }
+        // 4. Agrupamos por Produto para gerar o Ranking
+        $ranking = $allItems->groupBy('bar_product_id')->map(function ($group) use ($descontoGlobal, $totalBruto) {
+            $product = $group->first()->product;
+            $totalQty = $group->sum('quantity');
 
-        // 3. Transformamos os dados brutos no Ranking final
-        $ranking = $rankingData->map(function ($data) {
-            $product = $data['product'];
-            $purchasePrice = (float)($product->purchase_price ?? 0);
-            $salePrice = (float)($product->sale_price ?? 0);
+            // Faturamento Bruto deste produto específico
+            $rawRevenue = $group->sum(fn($item) => $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0));
 
-            // --- CÁLCULO FINANCEIRO REAL (Impactado pelos Vouchers) ---
-            $faturamentoReal = (float)$data['paid_revenue'];
-            // Custo total de TUDO que saiu do estoque (Pagas + Cortesias)
-            $custoTotalEstoque = $purchasePrice * ($data['paid_qty'] + $data['voucher_qty']);
-            // Lucro real no bolso (Ficará vermelho/negativo se houver muita cortesia)
-            $totalProfit = $faturamentoReal - $custoTotalEstoque;
+            // Rateio do Desconto: O produto assume uma parte do desconto proporcional ao seu valor
+            $proporcaoNoFaturamento = $totalBruto > 0 ? ($rawRevenue / $totalBruto) : 0;
+            $faturamentoLiquido = $rawRevenue - ($descontoGlobal * $proporcaoNoFaturamento);
 
-            // --- CÁLCULO TÉCNICO DE SAÚDE (Baseado no Preço de Cadastro) ---
-            // Isso garante que o card de "Saúde do Mix" não fique negativo
-            $marginTech = $salePrice > 0 ? (($salePrice - $purchasePrice) / $salePrice) * 100 : 0;
+            $totalCost = ($product->purchase_price ?? 0) * $totalQty;
+            $totalProfit = $faturamentoLiquido - $totalCost;
 
             return (object)[
                 'product' => $product,
-                'total_qty' => $data['paid_qty'] + $data['voucher_qty'],
-                'total_paid_qty' => $data['paid_qty'],
-                'total_voucher_qty' => $data['voucher_qty'],
-                'total_revenue' => $faturamentoReal,
+                'total_qty' => $totalQty,
+                'total_revenue' => $faturamentoLiquido,
                 'total_profit' => $totalProfit,
-                'margin_percent' => $marginTech
+                'margin_percent' => $faturamentoLiquido > 0 ? ($totalProfit / $faturamentoLiquido) * 100 : 0
             ];
         })->sortByDesc('total_qty');
 
-
-
-
-
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
-    }
-
-
-    /**
-     * Função Auxiliar para agregar quantidades e valores por produto
-     */
-    private function aggregateItem(&$collection, $item, $isVoucher)
-    {
-        $id = $item->bar_product_id;
-
-        if (!$collection->has($id)) {
-            $collection->put($id, [
-                'product' => $item->product,
-                'paid_qty' => 0,
-                'voucher_qty' => 0,
-                'paid_revenue' => 0,
-            ]);
-        }
-
-        $current = $collection->get($id);
-
-        if ($isVoucher) {
-            $current['voucher_qty'] += $item->quantity;
-        } else {
-            $current['paid_qty'] += $item->quantity;
-            // Usa o preço registrado no momento da venda para precisão histórica
-            $current['paid_revenue'] += $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0);
-        }
-
-        $collection->put($id, $current);
     }
 
     /**

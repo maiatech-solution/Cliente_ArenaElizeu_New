@@ -28,7 +28,7 @@
         </div>
 
         {{-- 📊 INDICADORES DE PERFORMANCE (KPIs) --}}
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-12">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
 
             {{-- Faturamento Consolidado --}}
             <div
@@ -43,22 +43,6 @@
                 <p
                     class="text-[9px] text-gray-500 font-bold uppercase italic mt-4 px-3 py-1 bg-black/40 rounded-full inline-block">
                     Mesas + Balcão
-                </p>
-            </div>
-
-            {{-- Total em Cortesias (Vouchers) --}}
-            <div
-                class="p-8 rounded-[2.5rem] bg-indigo-600/10 border-2 border-indigo-600/20 shadow-lg relative overflow-hidden group">
-                <div class="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
-                    <span class="text-9xl text-indigo-500 font-black">🎟️</span>
-                </div>
-                <h4 class="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">Total Cortesias</h4>
-                <p class="text-4xl font-black text-white italic tracking-tighter">
-                    R$ {{ number_format($totalVouchersMes, 2, ',', '.') }}
-                </p>
-                <p
-                    class="text-[9px] text-gray-500 font-bold uppercase italic mt-4 px-3 py-1 bg-black/40 rounded-full inline-block">
-                    Vouchers Emitidos
                 </p>
             </div>
 

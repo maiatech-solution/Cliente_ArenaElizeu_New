@@ -113,7 +113,7 @@ class BarReportController extends Controller
     }
 
     /**
-     * Relatório de Ranking de Produtos (Ajustado para Vouchers/Cortesias)
+     * RANKING DE PRODUTOS + MARGEM DE LUCRO
      */
     public function products(Request $request)
     {
@@ -121,10 +121,7 @@ class BarReportController extends Controller
         $startDate = Carbon::parse($mesReferencia)->startOfMonth();
         $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
-        $user = auth()->user();
-        $isAdmin = in_array($user->role, ['admin', 'gestor']);
-
-        // 1. Pegamos todas as ordens (Mesas) e vendas (PDV) finalizadas
+        // 1. Pegamos todas as ordens e vendas finalizadas
         $orders = BarOrder::whereIn('status', ['paid', 'pago'])
             ->whereBetween('updated_at', [$startDate, $endDate])
             ->with('items.product')
@@ -135,40 +132,44 @@ class BarReportController extends Controller
             ->with('items.product')
             ->get();
 
-        // 2. Agrupamos os itens identificando o que é venda paga e o que é Voucher
-        $rankingData = collect();
+        // 2. Agrupamos os itens e já identificamos se vieram de um Voucher
+        $ranking = collect();
 
-        // Processamento de Mesas
+        // Processamos Ordens (Mesas)
         foreach ($orders as $order) {
             $isVoucher = str_contains(strtoupper($order->payment_method), 'VOUCHER');
             foreach ($order->items as $item) {
-                $this->aggregateItem($rankingData, $item, $isVoucher);
+                $this->aggregateItem($ranking, $item, $isVoucher);
             }
         }
 
-        // Processamento de Balcão (PDV)
+        // Processamos Vendas (Balcão)
         foreach ($sales as $sale) {
             $isVoucher = strtoupper($sale->payment_method) === 'VOUCHER';
             foreach ($sale->items as $item) {
-                $this->aggregateItem($rankingData, $item, $isVoucher);
+                $this->aggregateItem($ranking, $item, $isVoucher);
             }
         }
 
-        // 3. Transformamos os dados brutos no Ranking final
-        $ranking = $rankingData->map(function ($data) {
+        // 3. Calculamos as métricas finais por produto
+        $ranking = $ranking->map(function ($data) {
             $product = $data['product'];
             $purchasePrice = (float)($product->purchase_price ?? 0);
             $salePrice = (float)($product->sale_price ?? 0);
 
-            // --- CÁLCULO FINANCEIRO REAL (Impactado pelos Vouchers) ---
+            // --- CÁLCULO FINANCEIRO (O QUE SOBROU NO BOLSO) ---
+            // Faturamento Real: Dinheiro que entrou (apenas vendas pagas)
             $faturamentoReal = (float)$data['paid_revenue'];
-            // Custo total de TUDO que saiu do estoque (Pagas + Cortesias)
+
+            // Custo Total: Quanto você pagou por TUDO que saiu (pago + cortesia)
             $custoTotalEstoque = $purchasePrice * ($data['paid_qty'] + $data['voucher_qty']);
-            // Lucro real no bolso (Ficará vermelho/negativo se houver muita cortesia)
+
+            // Lucro Líquido Real: Dinheiro no bolso - Custo do que saiu do estoque
             $totalProfit = $faturamentoReal - $custoTotalEstoque;
 
-            // --- CÁLCULO TÉCNICO DE SAÚDE (Baseado no Preço de Cadastro) ---
-            // Isso garante que o card de "Saúde do Mix" não fique negativo
+            // --- CÁLCULO TÉCNICO (SAÚDE DO PRODUTO) ---
+            // Margem Técnica: Baseada no preço de prateleira (para o card "Saúde do Mix" ficar bonito e real)
+            // Se você vende por 10 e custa 6, sua margem é 40%, independente se deu 1 de graça.
             $marginTech = $salePrice > 0 ? (($salePrice - $purchasePrice) / $salePrice) * 100 : 0;
 
             return (object)[
@@ -177,26 +178,20 @@ class BarReportController extends Controller
                 'total_paid_qty' => $data['paid_qty'],
                 'total_voucher_qty' => $data['voucher_qty'],
                 'total_revenue' => $faturamentoReal,
-                'total_profit' => $totalProfit,
-                'margin_percent' => $marginTech
+                'total_profit' => $totalProfit, // Aqui ainda pode dar negativo se você der MUITA cortesia
+                'margin_percent' => $marginTech // <--- ISSO VAI SALVAR SEU CARD DE "SAÚDE DO MIX"
             ];
         })->sortByDesc('total_qty');
-
-
-
-
 
         return view('bar.reports.products', compact('ranking', 'mesReferencia'));
     }
 
-
     /**
-     * Função Auxiliar para agregar quantidades e valores por produto
+     * Função auxiliar para agrupar os itens (adicione ao final do Controller)
      */
     private function aggregateItem(&$collection, $item, $isVoucher)
     {
         $id = $item->bar_product_id;
-
         if (!$collection->has($id)) {
             $collection->put($id, [
                 'product' => $item->product,
@@ -207,15 +202,13 @@ class BarReportController extends Controller
         }
 
         $current = $collection->get($id);
-
         if ($isVoucher) {
             $current['voucher_qty'] += $item->quantity;
         } else {
             $current['paid_qty'] += $item->quantity;
-            // Usa o preço registrado no momento da venda para precisão histórica
+            // Faturamento real baseado no preço que foi vendido (sem o desconto global)
             $current['paid_revenue'] += $item->quantity * ($item->price_at_sale ?? $item->unit_price ?? 0);
         }
-
         $collection->put($id, $current);
     }
 

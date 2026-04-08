@@ -180,17 +180,13 @@
                                                     ? 'text-blue-500'
                                                     : 'text-red-500');
                                     @endphp
-
                                     <div
                                         class="w-full max-w-[80px] mx-auto bg-gray-800 h-1.5 rounded-full overflow-hidden mb-1">
-                                        {{-- Usamos max($margin, 0) para a barra não tentar "andar para trás" --}}
-                                        <div class="{{ $color }} h-full" style="width: {{ max($margin, 0) }}%">
+                                        <div class="{{ $color }} h-full" style="width: {{ $margin }}%">
                                         </div>
                                     </div>
-
-                                    <span class="text-[10px] font-black {{ $text }} italic">
-                                        {{ number_format($margin, 1, ',', '.') }}%
-                                    </span>
+                                    <span
+                                        class="text-[10px] font-black {{ $text }} italic">{{ number_format($margin, 1) }}%</span>
                                 </td>
                             </tr>
                         @endforeach

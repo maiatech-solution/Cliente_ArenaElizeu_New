@@ -143,26 +143,15 @@
                                     R$ {{ number_format($item->total_revenue, 2, ',', '.') }}
                                 </td>
                                 <td class="p-6 text-right">
-                                    {{-- 1. Valor do Lucro com Cor Dinâmica --}}
-                                    <span
-                                        class="text-lg font-black {{ $item->total_profit < 0 ? 'text-red-500' : 'text-green-500' }} italic tracking-tighter block">
+                                    <span class="text-lg font-black text-green-500 italic tracking-tighter block">
                                         R$ {{ number_format($item->total_profit, 2, ',', '.') }}
                                     </span>
-
-                                    {{-- 2. Barra de Contribuição (Só aparece se o lucro for positivo para não quebrar o layout) --}}
+                                    {{-- Barra de Contribuição de Lucro Individual --}}
                                     <div class="w-20 ml-auto bg-gray-800 h-1 rounded-full mt-1 overflow-hidden">
-                                        <div class="{{ $item->total_profit < 0 ? 'bg-red-600' : 'bg-green-600' }} h-full"
-                                            style="width: {{ $item->total_profit > 0 ? ($item->total_profit / max($ranking->sum('total_profit'), 1)) * 100 : 100 }}%">
+                                        <div class="bg-green-600 h-full"
+                                            style="width: {{ ($item->total_profit / max($ranking->sum('total_profit'), 1)) * 100 }}%">
                                         </div>
                                     </div>
-
-                                    {{-- 3. NOVO: Badge de Cortesias --}}
-                                    @if ($item->total_voucher_qty > 0)
-                                        <span
-                                            class="text-[8px] font-black text-indigo-400 uppercase tracking-tighter mt-1 block">
-                                            🎟️ {{ $item->total_voucher_qty }} Cortesia(s)
-                                        </span>
-                                    @endif
                                 </td>
                                 <td class="p-6 text-center">
                                     @php
@@ -180,17 +169,13 @@
                                                     ? 'text-blue-500'
                                                     : 'text-red-500');
                                     @endphp
-
                                     <div
                                         class="w-full max-w-[80px] mx-auto bg-gray-800 h-1.5 rounded-full overflow-hidden mb-1">
-                                        {{-- Usamos max($margin, 0) para a barra não tentar "andar para trás" --}}
-                                        <div class="{{ $color }} h-full" style="width: {{ max($margin, 0) }}%">
+                                        <div class="{{ $color }} h-full" style="width: {{ $margin }}%">
                                         </div>
                                     </div>
-
-                                    <span class="text-[10px] font-black {{ $text }} italic">
-                                        {{ number_format($margin, 1, ',', '.') }}%
-                                    </span>
+                                    <span
+                                        class="text-[10px] font-black {{ $text }} italic">{{ number_format($margin, 1) }}%</span>
                                 </td>
                             </tr>
                         @endforeach
