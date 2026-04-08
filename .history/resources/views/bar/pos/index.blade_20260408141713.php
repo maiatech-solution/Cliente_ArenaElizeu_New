@@ -731,8 +731,7 @@
             let phone = prompt("Número do cliente (DDD + Número):", "");
             if (phone) phone = phone.replace(/\D/g, '');
 
-            // Verifica se é Voucher
-            const isVoucher = (paymentMethod === 'voucher' || payments.some(p => p.method === 'voucher'));
+            // Captura os valores de desconto e totais
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
             const subtotalBruto = currentCartTotal + discountVal;
 
@@ -746,20 +745,14 @@
 
             text += `\n------------------------------\n`;
 
-            // No Voucher, não faz sentido detalhar subtotal e desconto, pois o foco é a CORTESIA
-            if (isVoucher) {
-                text += `*VALOR TOTAL:* R$ 0,00\n`;
-                text += `*STATUS:* 🎟️ CORTESIA / VOUCHER\n`;
-            } else {
-                // Se houver desconto e NÃO for voucher, detalha normal
-                if (discountVal > 0) {
-                    text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                    text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                }
-                text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
-                text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
+            // Se houver desconto, detalha o financeiro na mensagem
+            if (discountVal > 0) {
+                text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
+                text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
             }
 
+            text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
+            text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
             text += `------------------------------\n`;
             text += `_Obrigado pela preferência!_`;
 

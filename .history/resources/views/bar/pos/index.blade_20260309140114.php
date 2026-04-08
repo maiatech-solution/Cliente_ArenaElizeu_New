@@ -172,43 +172,25 @@
                         </button>
                     </div>
 
-                    {{-- 5. Métodos de Pagamento Padronizados (MAIATECH PDV) --}}
+                    {{-- 5. Métodos de Pagamento --}}
                     <div class="grid grid-cols-2 gap-2">
-                        @foreach (\App\Models\Bar\BarCashMovement::getPaymentMethods() as $key => $label)
-                            {{-- Extraímos o emoji e o texto para manter o layout dos botões --}}
-                            @php
-                                $icon = '💰'; // Ícone padrão
-                                if (str_contains($label, '📱')) {
-                                    $icon = '📱';
-                                }
-                                if (str_contains($label, '💵')) {
-                                    $icon = '💵';
-                                }
-                                if (str_contains($label, '💳')) {
-                                    $icon = '💳';
-                                }
-                                if (str_contains($label, '🎟️')) {
-                                    $icon = '🎟️';
-                                }
-                                if (str_contains($label, '🏦')) {
-                                    $icon = '🏦';
-                                }
-
-                                // Removemos o emoji do label para não repetir no texto do botão
-                                $cleanLabel = trim(str_replace($icon, '', $label));
-                            @endphp
-
-                            <button type="button" onclick="setPaymentMethod('{{ $key }}')"
+                        @php
+                            $metodos = [
+                                'dinheiro' => ['label' => 'Dinheiro', 'icon' => '💵'],
+                                'pix' => ['label' => 'PIX', 'icon' => '📱'],
+                                'debito' => ['label' => 'Débito', 'icon' => '💳'],
+                                'credito' => ['label' => 'Crédito', 'icon' => '💳'],
+                            ];
+                        @endphp
+                        @foreach ($metodos as $key => $info)
+                            <button onclick="setPaymentMethod('{{ $key }}')"
                                 class="pay-btn flex items-center gap-2 p-3 rounded-2xl border border-gray-800 bg-gray-900 text-gray-500 transition-all font-black text-[10px] uppercase hover:border-orange-500/50"
                                 id="btn-{{ $key }}">
-                                <span>{{ $icon }}</span>
-                                {{ $cleanLabel }}
+                                <span>{{ $info['icon'] }}</span>
+                                {{ $info['label'] }}
                             </button>
                         @endforeach
                     </div>
-
-                    {{-- Campo oculto que armazena a escolha para o formulário --}}
-                    <input type="hidden" name="payment_method" id="selected_payment_method" required>
 
                     <button onclick="checkout()" id="finishBtn" disabled
                         class="w-full py-5 bg-gray-800 text-gray-500 font-black rounded-2xl uppercase tracking-[0.2em] text-xs transition-all cursor-not-allowed shadow-xl">
@@ -460,17 +442,12 @@
 
         function setPaymentMethod(method) {
             paymentMethod = method;
-
-            // Reset visual dos botões
             document.querySelectorAll('.pay-btn').forEach(btn => {
                 btn.classList.remove('bg-orange-600', 'text-white', 'border-orange-500', 'shadow-lg');
                 btn.classList.add('bg-gray-900', 'text-gray-500');
             });
-
-            // Ativa o botão selecionado
-            const activeBtn = document.getElementById('btn-' + method);
-            activeBtn.classList.replace('bg-gray-900', 'bg-orange-600');
-            activeBtn.classList.replace('text-gray-500', 'text-white');
+            document.getElementById('btn-' + method).classList.replace('bg-gray-900', 'bg-orange-600');
+            document.getElementById('btn-' + method).classList.replace('text-gray-500', 'text-white');
 
             const totalPaidSoFar = payments.reduce((acc, p) => acc + p.value, 0);
             const remaining = currentCartTotal - totalPaidSoFar;
@@ -480,19 +457,7 @@
             document.getElementById('inputLabel').innerText = `VALOR (${method.toUpperCase()})`;
 
             const amountInput = document.getElementById('amountReceived');
-
-            // --- LÓGICA DO VOUCHER ---
-            if (method === 'voucher') {
-                // Se for voucher, o valor recebido é 0, pois é cortesia
-                amountInput.value = "0.00";
-                // Opcional: Desabilita o input para não alterarem o valor do voucher
-                amountInput.readOnly = true;
-            } else {
-                // Para outros métodos, sugere o valor restante
-                amountInput.value = remaining > 0 ? remaining.toFixed(2) : "";
-                amountInput.readOnly = false;
-            }
-
+            amountInput.value = remaining > 0 ? remaining.toFixed(2) : "";
             amountInput.focus();
             amountInput.select();
 
@@ -500,18 +465,10 @@
         }
 
         function calculatePayment() {
-            // Pegamos o valor digitado ou 0
             const currentInput = parseFloat(document.getElementById('amountReceived').value) || 0;
             const totalPaidSoFar = payments.reduce((acc, p) => acc + p.value, 0);
+            const totalWithInput = totalPaidSoFar + currentInput;
 
-            // --- AJUSTE VOUCHER ---
-            // Se for voucher, simulamos que o valor inserido é exatamente o que falta para fechar a conta
-            let effectiveInput = currentInput;
-            if (paymentMethod === 'voucher') {
-                effectiveInput = currentCartTotal - totalPaidSoFar;
-            }
-
-            const totalWithInput = totalPaidSoFar + effectiveInput;
             const feedbackDiv = document.getElementById('paymentFeedback');
             const label = document.getElementById('feedbackLabel');
             const valueSpan = document.getElementById('feedbackValue');
@@ -522,12 +479,7 @@
             feedbackDiv.classList.remove('hidden', 'bg-green-900/20', 'text-green-500', 'bg-orange-900/20',
                 'text-orange-500');
 
-            // Lógica de exibição de Troco / Falta Pagar
-            // Se for VOUCHER, não mostramos feedback de erro/pendência
-            if (paymentMethod === 'voucher') {
-                feedbackDiv.classList.add('hidden');
-                addBtn.classList.add('hidden');
-            } else if (diff > 0.005) {
+            if (diff > 0.005) {
                 feedbackDiv.classList.add('bg-green-900/20', 'text-green-500');
                 label.innerText = "Troco:";
                 valueSpan.innerText = `R$ ${diff.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
@@ -542,7 +494,6 @@
                 addBtn.classList.add('hidden');
             }
 
-            // Valida o checkout com o valor total (se for voucher, totalWithInput será igual ao currentCartTotal)
             validateCheckout(totalWithInput);
         }
 
@@ -588,15 +539,10 @@
 
         function validateCheckout(totalPaid) {
             const finishBtn = document.getElementById('finishBtn');
-
-            // REGRA: É válido se tiver itens no carrinho E (o valor bater OU for um Voucher)
-            const isVoucher = (paymentMethod === 'voucher');
-            const isValid = cart.length > 0 && (isVoucher || totalPaid >= (currentCartTotal - 0.01));
+            const isValid = cart.length > 0 && totalPaid >= (currentCartTotal - 0.01);
 
             finishBtn.disabled = !isValid;
-
             if (isValid) {
-                // Se for voucher, podemos até usar uma cor diferente (como laranja) ou manter o verde
                 finishBtn.classList.replace('bg-gray-800', 'bg-green-600');
                 finishBtn.classList.replace('text-gray-500', 'text-white');
                 finishBtn.classList.add('cursor-pointer', 'shadow-lg', 'shadow-green-600/30');
@@ -612,11 +558,7 @@
             const totalPaid = payments.reduce((acc, p) => acc + p.value, 0) + amountInputVal;
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
 
-            // --- 🎟️ AJUSTE MAIATECH: EXCEÇÃO PARA VOUCHER ---
-            const isVoucher = (paymentMethod === 'voucher');
-
-            // Agora a condição diz: "Se o carrinho estiver vazio OU (NÃO for voucher E o valor for insuficiente)"
-            if (cart.length === 0 || (!isVoucher && totalPaid < (currentCartTotal - 0.01))) {
+            if (cart.length === 0 || totalPaid < (currentCartTotal - 0.01)) {
                 alert("Valor insuficiente para finalizar.");
                 return;
             }
@@ -626,14 +568,7 @@
             btn.innerText = 'PROCESSANDO...';
 
             let finalPayments = [...payments];
-
-            // Se for Voucher, adicionamos ele com valor 0 para registrar a cortesia no banco
-            if (isVoucher) {
-                finalPayments.push({
-                    method: 'voucher',
-                    value: 0
-                });
-            } else if (amountInputVal > 0 && paymentMethod) {
+            if (amountInputVal > 0 && paymentMethod) {
                 finalPayments.push({
                     method: paymentMethod,
                     value: amountInputVal
@@ -653,15 +588,14 @@
                         items: cart,
                         payments: finalPayments,
                         total_value: currentCartTotal,
-                        discount_value: discountVal
+                        discount_value: discountVal // Enviando o desconto para o banco
                     })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    // No recibo, se for voucher, passamos o total do carrinho para o cupom sair bonito
-                    showReceipt(isVoucher ? currentCartTotal : totalPaid);
+                    showReceipt(totalPaid);
                 } else {
                     alert('❌ ERRO: ' + data.message);
                     btn.disabled = false;
@@ -677,20 +611,16 @@
         // --- 🧾 RECIBO E FINALIZAÇÃO ---
 
         function showReceipt(totalPaid) {
+            // 1. Captura o valor do desconto direto do input de desconto
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
+
+            // 2. Calcula o subtotal (o que seria o valor cheio sem o desconto)
             const subtotalBruto = currentCartTotal + discountVal;
-
-            // --- 🚨 AJUSTE PARA VOUCHER (CORTESIA) ---
-            // Verificamos se o método principal ou algum dos pagamentos parciais é voucher
-            const isVoucher = (paymentMethod === 'voucher' || payments.some(p => p.method === 'voucher'));
-
-            // Se for voucher, o recebido e o total financeiro são ZERO
-            const totalExibicao = isVoucher ? 0 : currentCartTotal;
-            const recebidoExibicao = isVoucher ? 0 : totalPaid;
-            const change = isVoucher ? 0 : (recebidoExibicao - totalExibicao);
+            const change = totalPaid - currentCartTotal;
 
             document.getElementById('receiptDate').innerText = new Date().toLocaleString('pt-BR');
 
+            // 3. Preenche os novos campos de Subtotal e Desconto no Modal
             const subtotalElem = document.getElementById('receiptSubtotalValue');
             const discountElem = document.getElementById('receiptDiscountValue');
             const subtotalRow = document.getElementById('receiptSubtotalRow');
@@ -701,20 +631,20 @@
             if (discountElem) discountElem.innerText =
                 `- R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
 
+            // Só mostra as linhas de subtotal e desconto se realmente houve desconto
             if (subtotalRow) subtotalRow.style.display = discountVal > 0 ? 'flex' : 'none';
             if (discountRow) discountRow.style.display = discountVal > 0 ? 'flex' : 'none';
 
-            // 4. Preenche os campos corrigidos
-            // Se for Voucher, ele mostra R$ 0,00 e adicionamos um aviso de CORTESIA
-            document.getElementById('receiptTotal').innerText = isVoucher ? 'R$ 0,00 (CORTESIA)' :
-                `R$ ${totalExibicao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            // 4. Preenche os campos que você já tinha
+            document.getElementById('receiptTotal').innerText =
+                `R$ ${currentCartTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
             document.getElementById('receiptReceived').innerText =
-                `R$ ${recebidoExibicao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+                `R$ ${totalPaid.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
             document.getElementById('receiptChange').innerText =
                 `R$ ${Math.max(0, change).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
 
-            const methodsUsed = isVoucher ? '🎟️ VOUCHER / CORTESIA' : (payments.length > 0 ? payments.map(p => p.method)
-                .join(' + ') : (paymentMethod || 'Dinheiro'));
+            const methodsUsed = payments.length > 0 ? payments.map(p => p.method).join(' + ') : (paymentMethod ||
+                'Dinheiro');
             document.getElementById('receiptPayment').innerText = methodsUsed;
 
             document.getElementById('receiptItems').innerHTML = cart.map(item => `
@@ -731,8 +661,7 @@
             let phone = prompt("Número do cliente (DDD + Número):", "");
             if (phone) phone = phone.replace(/\D/g, '');
 
-            // Verifica se é Voucher
-            const isVoucher = (paymentMethod === 'voucher' || payments.some(p => p.method === 'voucher'));
+            // Captura os valores de desconto e totais
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
             const subtotalBruto = currentCartTotal + discountVal;
 
@@ -746,20 +675,14 @@
 
             text += `\n------------------------------\n`;
 
-            // No Voucher, não faz sentido detalhar subtotal e desconto, pois o foco é a CORTESIA
-            if (isVoucher) {
-                text += `*VALOR TOTAL:* R$ 0,00\n`;
-                text += `*STATUS:* 🎟️ CORTESIA / VOUCHER\n`;
-            } else {
-                // Se houver desconto e NÃO for voucher, detalha normal
-                if (discountVal > 0) {
-                    text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                    text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                }
-                text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
-                text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
+            // Se houver desconto, detalha o financeiro na mensagem
+            if (discountVal > 0) {
+                text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
+                text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
             }
 
+            text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
+            text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
             text += `------------------------------\n`;
             text += `_Obrigado pela preferência!_`;
 

@@ -47,16 +47,4 @@ class BarCashMovement extends Model
     {
         return $this->belongsTo(BarSale::class, 'bar_sale_id');
     }
-
-    public static function getPaymentMethods()
-    {
-        return [
-            'pix' => '📱 Pix',
-            'dinheiro' => '💵 Dinheiro',
-            'debito' => '💳 Cartão de Débito',
-            'credito' => '💳 Cartão de Crédito',
-            'voucher' => '🎟️ Voucher (Cortesia)',
-            'transferencia' => '🏦 Transferência',
-        ];
-    }
 }

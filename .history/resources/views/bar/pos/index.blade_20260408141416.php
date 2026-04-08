@@ -677,20 +677,16 @@
         // --- 🧾 RECIBO E FINALIZAÇÃO ---
 
         function showReceipt(totalPaid) {
+            // 1. Captura o valor do desconto direto do input de desconto
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
+
+            // 2. Calcula o subtotal (o que seria o valor cheio sem o desconto)
             const subtotalBruto = currentCartTotal + discountVal;
-
-            // --- 🚨 AJUSTE PARA VOUCHER (CORTESIA) ---
-            // Verificamos se o método principal ou algum dos pagamentos parciais é voucher
-            const isVoucher = (paymentMethod === 'voucher' || payments.some(p => p.method === 'voucher'));
-
-            // Se for voucher, o recebido e o total financeiro são ZERO
-            const totalExibicao = isVoucher ? 0 : currentCartTotal;
-            const recebidoExibicao = isVoucher ? 0 : totalPaid;
-            const change = isVoucher ? 0 : (recebidoExibicao - totalExibicao);
+            const change = totalPaid - currentCartTotal;
 
             document.getElementById('receiptDate').innerText = new Date().toLocaleString('pt-BR');
 
+            // 3. Preenche os novos campos de Subtotal e Desconto no Modal
             const subtotalElem = document.getElementById('receiptSubtotalValue');
             const discountElem = document.getElementById('receiptDiscountValue');
             const subtotalRow = document.getElementById('receiptSubtotalRow');
@@ -701,20 +697,20 @@
             if (discountElem) discountElem.innerText =
                 `- R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
 
+            // Só mostra as linhas de subtotal e desconto se realmente houve desconto
             if (subtotalRow) subtotalRow.style.display = discountVal > 0 ? 'flex' : 'none';
             if (discountRow) discountRow.style.display = discountVal > 0 ? 'flex' : 'none';
 
-            // 4. Preenche os campos corrigidos
-            // Se for Voucher, ele mostra R$ 0,00 e adicionamos um aviso de CORTESIA
-            document.getElementById('receiptTotal').innerText = isVoucher ? 'R$ 0,00 (CORTESIA)' :
-                `R$ ${totalExibicao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            // 4. Preenche os campos que você já tinha
+            document.getElementById('receiptTotal').innerText =
+                `R$ ${currentCartTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
             document.getElementById('receiptReceived').innerText =
-                `R$ ${recebidoExibicao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+                `R$ ${totalPaid.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
             document.getElementById('receiptChange').innerText =
                 `R$ ${Math.max(0, change).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
 
-            const methodsUsed = isVoucher ? '🎟️ VOUCHER / CORTESIA' : (payments.length > 0 ? payments.map(p => p.method)
-                .join(' + ') : (paymentMethod || 'Dinheiro'));
+            const methodsUsed = payments.length > 0 ? payments.map(p => p.method).join(' + ') : (paymentMethod ||
+                'Dinheiro');
             document.getElementById('receiptPayment').innerText = methodsUsed;
 
             document.getElementById('receiptItems').innerHTML = cart.map(item => `
@@ -731,8 +727,7 @@
             let phone = prompt("Número do cliente (DDD + Número):", "");
             if (phone) phone = phone.replace(/\D/g, '');
 
-            // Verifica se é Voucher
-            const isVoucher = (paymentMethod === 'voucher' || payments.some(p => p.method === 'voucher'));
+            // Captura os valores de desconto e totais
             const discountVal = parseFloat(document.getElementById('cartDiscount').value) || 0;
             const subtotalBruto = currentCartTotal + discountVal;
 
@@ -746,20 +741,14 @@
 
             text += `\n------------------------------\n`;
 
-            // No Voucher, não faz sentido detalhar subtotal e desconto, pois o foco é a CORTESIA
-            if (isVoucher) {
-                text += `*VALOR TOTAL:* R$ 0,00\n`;
-                text += `*STATUS:* 🎟️ CORTESIA / VOUCHER\n`;
-            } else {
-                // Se houver desconto e NÃO for voucher, detalha normal
-                if (discountVal > 0) {
-                    text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                    text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
-                }
-                text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
-                text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
+            // Se houver desconto, detalha o financeiro na mensagem
+            if (discountVal > 0) {
+                text += `*SUBTOTAL:* R$ ${subtotalBruto.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
+                text += `*DESCONTO:* - R$ ${discountVal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n`;
             }
 
+            text += `*TOTAL PAGO: ${document.getElementById('receiptTotal').innerText}*\n`;
+            text += `*PAGO EM: ${document.getElementById('receiptPayment').innerText.toUpperCase()}*\n`;
             text += `------------------------------\n`;
             text += `_Obrigado pela preferência!_`;
 
