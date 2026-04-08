@@ -42,31 +42,18 @@
                         </div>
                     </div>
 
-                    {{-- Método de Pagamento do Sinal Padronizado --}}
+                    {{-- Método de Pagamento --}}
                     <div>
-                        <label for="payment_method"
-                            class="block text-xs font-bold text-gray-500 uppercase tracking-tighter">
+                        <label for="payment_method" class="block text-sm font-medium text-gray-700">
                             Forma de Pagamento do Sinal
                         </label>
-
                         <select name="payment_method" id="payment_method" required
-                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 text-sm h-10 font-bold">
-
-                            <option value="">Selecione...</option>
-
-                            {{-- Loop dinâmico de acordo com o Model FinancialTransaction --}}
-                            @foreach (\App\Models\FinancialTransaction::getPaymentMethods() as $key => $label)
-                                <option value="{{ $key }}" {{ $key === 'pix' ? 'selected' : '' }}>
-                                    {{ $label }}
-                                </option>
-                            @endforeach
-
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">
+                            <option value="pix" selected>Pix</option>
+                            <option value="dinheiro">Dinheiro</option>
+                            <option value="cartao">Cardão de Crédito/Débito</option>
+                            <option value="transferencia">Transferência Bancária</option>
                         </select>
-
-                        <p class="text-[9px] text-gray-400 mt-1 italic leading-tight">
-                            * Utilize o método dinâmico do Model para garantir a inclusão do Voucher e separação de
-                            cartões.
-                        </p>
                     </div>
 
                     {{-- Checkbox Recorrência --}}
