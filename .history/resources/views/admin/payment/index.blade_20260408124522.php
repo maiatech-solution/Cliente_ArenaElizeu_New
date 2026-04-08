@@ -2279,93 +2279,139 @@
                             .then(json => {
                                 if (json.success) {
                                     if (formId === 'closeCashForm') {
-                                        if (typeof closeCloseCashModal === 'function') closeCloseCashModal();
+                                        // --- BLOCO DE DEBUG ---
+                                        console.log("🔍 DEBUG DE FECHAMENTO INICIADO");
+                                        console.log("Pix:", document.getElementById('displayBancoModal')
+                                            ?.innerText);
+                                        console.log("Dinheiro:", document.getElementById(
+                                            'displayGavetaModal')?.innerText);
+                                        console.log("Crédito:", document.getElementById(
+                                            'displayCreditoModal')?.innerText);
+                                        console.log("Débito:", document.getElementById('displayDebitoModal')
+                                            ?.innerText);
+                                        console.log("Total:", document.getElementById(
+                                            'calculatedLiquidAmount')?.innerText);
+                                        // -----------------------
+                                        if (typeof closeCloseCashModal === 'function')
+                                            closeCloseCashModal();
 
-                                        // --- 🧮 LÓGICA DE SOMA REAL (TABELA) ---
+                                        // 1. 🧮 ALIMENTAÇÃO DO MODAL (DIFERENCIANDO CRÉDITO/DÉBITO)
+                                        // Função auxiliar para capturar valores da tela com segurança
+                                        const capturarValor = (idCard, idFallback) => {
+                                            let elemento = document.getElementById(idCard) || document
+                                                .getElementById(idFallback);
+                                            return elemento ? elemento.innerText : 'R$ 0,00';
+                                        };
+
+                                        const pixVal = capturarValor('displayBancoModal',
+                                            'js_saldoDigitalBancoRaw');
+                                        const dinheiroVal = capturarValor('displayGavetaModal',
+                                            'js_saldoFisicoGavetaRaw');
+                                        const creditoVal = capturarValor('displayCreditoModal',
+                                            'resumoCredito');
+                                        const debitoVal = capturarValor('displayDebitoModal',
+                                            'resumoDebito');
+                                        const totalVal = capturarValor('calculatedLiquidAmount',
+                                            'displayTotalGeral');
+
+                                        // Injetamos nos IDs do Modal de Fechamento Final
+                                        if (document.getElementById('resumoPix')) document.getElementById(
+                                            'resumoPix').innerText = pixVal;
+                                        if (document.getElementById('resumoDinheiro')) document
+                                            .getElementById(
+                                                'resumoDinheiro').innerText = dinheiroVal;
+                                        if (document.getElementById('resumoCredito')) document
+                                            .getElementById(
+                                                'resumoCredito').innerText = creditoVal;
+                                        if (document.getElementById('resumoDebito')) document
+                                            .getElementById(
+                                                'resumoDebito').innerText = debitoVal;
+                                        if (document.getElementById('resumoTotal')) document.getElementById(
+                                            'resumoTotal').innerText = totalVal;
+
+                                        // 2. 📅 CABEÇALHO E DATA
+                                        const dataSel = document.getElementById('js_cashierDate')?.value
+                                            .split(
+                                                '-').reverse().join('/') || '';
+                                        if (document.getElementById('resumoDataInfo')) {
+                                            document.getElementById('resumoDataInfo').innerText =
+                                                `Gerenciamento de Caixa - ${dataSel}`;
+                                        }
+
+                                        // 3. 📝 VARREDURA DA TABELA PARA O CUPOM TÉRMICO
                                         let htmlMovimentacao = "";
-                                        let sPix = 0,
-                                            sDin = 0,
-                                            sCre = 0,
-                                            sDeb = 0,
-                                            sTotal = 0;
-
                                         const tabelas = document.querySelectorAll('table');
-                                        let tabFin = null;
-                                        tabelas.forEach(t => {
-                                            if (t.innerText.toUpperCase().includes('TIPO | FORMA'))
-                                                tabFin = t;
+                                        let tabelaFinanceira = null;
+
+                                        tabelas.forEach((t) => {
+                                            const txt = t.innerText.toUpperCase();
+                                            if (txt.includes('TIPO | FORMA') || txt.includes(
+                                                    'DESCRIÇÃO') || txt.includes(
+                                                    'PAGADOR / GESTOR')) {
+                                                tabelaFinanceira = t;
+                                            }
                                         });
 
-                                        if (tabFin) {
-                                            tabFin.querySelectorAll('tbody tr').forEach(linha => {
-                                                if (linha.cells.length < 6 || linha.innerText.includes(
+                                        if (!tabelaFinanceira && tabelas.length > 0) {
+                                            tabelaFinanceira = tabelas[tabelas.length - 1];
+                                        }
+
+                                        if (tabelaFinanceira) {
+                                            const linhas = tabelaFinanceira.querySelectorAll('tbody tr');
+                                            linhas.forEach((linha) => {
+                                                if (linha.cells.length < 6 || linha.innerText
+                                                    .includes(
                                                         'Nenhuma')) return;
 
                                                 const cols = linha.cells;
-                                                const formaStr = cols[3].innerText.trim().toUpperCase();
-                                                const valorTxt = cols[5].innerText.trim();
+                                                const hora = cols[0].innerText.trim();
+                                                const pagador = cols[2].innerText.split('\n')[0]
+                                                    .trim();
+                                                let formaOriginal = cols[3].innerText.trim()
+                                                    .toUpperCase();
+                                                let formaExibicao = "";
 
-                                                // Converte texto "R$ 60,00" para número real
-                                                const vNum = parseFloat(valorTxt.replace(/[^\d,-]/g, '')
-                                                    .replace(',', '.')) || 0;
-
-                                                let exibicao = "";
-                                                if (formaStr.includes('PIX')) {
-                                                    exibicao = 'PIX';
-                                                    sPix += vNum;
-                                                } else if (formaStr.includes('DINHEIRO') || formaStr
-                                                    .includes('ESPECIE')) {
-                                                    exibicao = 'DINHEIRO';
-                                                    sDin += vNum;
-                                                } else if (formaStr.includes('CRÉDITO')) {
-                                                    exibicao = 'CARTÃO CRÉDITO';
-                                                    sCre += vNum;
+                                                if (formaOriginal.includes('CRÉDITO') ||
+                                                    formaOriginal
+                                                    .includes('CREDIT')) {
+                                                    formaExibicao = 'CARTÃO CRÉDITO';
+                                                } else if (formaOriginal.includes('DÉBITO') ||
+                                                    formaOriginal.includes('DEBIT')) {
+                                                    formaExibicao = 'CARTÃO DÉBITO';
+                                                } else if (formaOriginal.includes('PIX')) {
+                                                    formaExibicao = 'PIX';
+                                                } else if (formaOriginal.includes('DINHEIRO') ||
+                                                    formaOriginal.includes('ESPECIE')) {
+                                                    formaExibicao = 'DINHEIRO';
                                                 } else {
-                                                    exibicao = 'CARTÃO DÉBITO';
-                                                    sDeb += vNum;
+                                                    formaExibicao = formaOriginal.replace(
+                                                        'SINAL/ENTRADA', '').replace(
+                                                        'PAGAMENTO',
+                                                        '').trim() || 'OUTRO';
                                                 }
-                                                sTotal += vNum;
 
-                                                htmlMovimentacao += `
-                                    <div class="flex border-b" style="display:flex; justify-content:space-between; border-bottom:1px dashed #000; padding:2px 0; font-family:monospace;">
-                                        <div style="text-align:left;">
-                                            <span style="font-size:10px; font-weight:bold;">${cols[0].innerText} - ${cols[2].innerText.split('\n')[0]}</span><br>
-                                            <span style="font-size:9px;">[${exibicao}]</span>
-                                        </div>
-                                        <span style="font-size:10px; font-weight:bold;">${valorTxt}</span>
-                                    </div>`;
+                                                const valor = cols[5].innerText.trim();
+                                                if (valor && valor !== "R$ 0,00" && !valor.includes(
+                                                        '-')) {
+                                                    htmlMovimentacao += `
+                                        <div class="flex border-b" style="display: flex; justify-content: space-between; margin-bottom: 3px; border-bottom: 1px dashed #000; padding: 2px 0; font-family: monospace;">
+                                            <div style="text-align: left; max-width: 72%;">
+                                                <span style="font-weight: bold; font-size: 10px;">${hora} - ${pagador}</span><br>
+                                                <span style="font-size: 9px; color: #333; font-weight: bold;">[${formaExibicao}]</span>
+                                            </div>
+                                            <span style="font-weight: bold; font-size: 10px; align-self: center;">${valor}</span>
+                                        </div>`;
+                                                }
                                             });
                                         }
 
-                                        // Formatação BRL e Injeção no Modal de Resumo
-                                        const f = (v) => v.toLocaleString('pt-br', {
-                                            style: 'currency',
-                                            currency: 'BRL'
-                                        });
-
-                                        if (document.getElementById('resumoPix')) document.getElementById(
-                                            'resumoPix').innerText = f(sPix);
-                                        if (document.getElementById('resumoDinheiro')) document.getElementById(
-                                            'resumoDinheiro').innerText = f(sDin);
-                                        if (document.getElementById('resumoCredito')) document.getElementById(
-                                            'resumoCredito').innerText = f(sCre);
-                                        if (document.getElementById('resumoDebito')) document.getElementById(
-                                            'resumoDebito').innerText = f(sDeb);
-                                        if (document.getElementById('resumoTotal')) document.getElementById(
-                                            'resumoTotal').innerText = f(sTotal);
-
-                                        // Data e Exibição
-                                        const dataCaixa = document.getElementById('js_cashierDate')?.value
-                                            .split('-').reverse().join('/') || '';
-                                        if (document.getElementById('resumoDataInfo')) {
-                                            document.getElementById('resumoDataInfo').innerText =
-                                                `Gerenciamento de Caixa - ${dataCaixa}`;
-                                        }
-
-                                        const container = document.getElementById('resumoListaAgendamentos');
+                                        // Injeta a lista no container
+                                        const container = document.getElementById(
+                                            'resumoListaAgendamentos');
                                         if (container) container.innerHTML = htmlMovimentacao ||
-                                            "SEM MOVIMENTAÇÕES.";
+                                            "SEM MOVIMENTAÇÕES REGISTRADAS.";
 
+                                        // Exibe o modal final de fechamento
                                         const modalResumo = document.getElementById('modalResumoFinal');
                                         if (modalResumo) modalResumo.classList.replace('hidden', 'flex');
 
@@ -2383,8 +2429,12 @@
                                 }
                             })
                             .catch(err => {
-                                console.error("Erro Ajax:", err);
+                                console.error(err);
                                 window.caixaProcessandoGlobal[formId] = false;
+                                if (btn) {
+                                    btn.disabled = false;
+                                    btn.innerText = "TENTAR NOVAMENTE";
+                                }
                             });
                     };
 

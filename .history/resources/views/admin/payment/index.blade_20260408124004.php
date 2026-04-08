@@ -2281,90 +2281,108 @@
                                     if (formId === 'closeCashForm') {
                                         if (typeof closeCloseCashModal === 'function') closeCloseCashModal();
 
-                                        // --- 🧮 LÓGICA DE SOMA REAL (TABELA) ---
-                                        let htmlMovimentacao = "";
-                                        let sPix = 0,
-                                            sDin = 0,
-                                            sCre = 0,
-                                            sDeb = 0,
-                                            sTotal = 0;
+                                        // 1. 🧮 ALIMENTAÇÃO DO MODAL (DIFERENCIANDO CRÉDITO/DÉBITO)
+                                        // Capturamos os valores dos cards de resumo da tela principal
+                                        const pixVal = document.getElementById('displayBancoModal')
+                                            ?.innerText || 'R$ 0,00';
+                                        const dinheiroVal = document.getElementById('displayGavetaModal')
+                                            ?.innerText || 'R$ 0,00';
+                                        const creditoVal = document.getElementById('displayCreditoModal')
+                                            ?.innerText || 'R$ 0,00';
+                                        const debitoVal = document.getElementById('displayDebitoModal')
+                                            ?.innerText || 'R$ 0,00';
+                                        const totalVal = document.getElementById('calculatedLiquidAmount')
+                                            ?.innerText || 'R$ 0,00';
 
+                                        // Injetamos nos IDs do Modal de Fechamento (Corrigido sem resumoCartao)
+                                        if (document.getElementById('resumoPix')) document.getElementById(
+                                            'resumoPix').innerText = pixVal;
+                                        if (document.getElementById('resumoDinheiro')) document.getElementById(
+                                            'resumoDinheiro').innerText = dinheiroVal;
+                                        if (document.getElementById('resumoCredito')) document.getElementById(
+                                            'resumoCredito').innerText = creditoVal;
+                                        if (document.getElementById('resumoDebito')) document.getElementById(
+                                            'resumoDebito').innerText = debitoVal;
+                                        if (document.getElementById('resumoTotal')) document.getElementById(
+                                            'resumoTotal').innerText = totalVal;
+
+                                        // 2. 📅 CABEÇALHO E DATA
+                                        const arenaNome = document.querySelector('h2')?.innerText.replace('💰',
+                                            '').trim() || 'Arena';
+                                        const dataSel = document.getElementById('js_cashierDate')?.value.split(
+                                            '-').reverse().join('/') || '';
+
+                                        if (document.getElementById('resumoDataInfo')) {
+                                            document.getElementById('resumoDataInfo').innerText =
+                                                `Gerenciamento de Caixa - ${dataSel}`;
+                                        }
+
+                                        // 3. 📝 VARREDURA DA TABELA PARA O CUPOM TÉRMICO
+                                        let htmlMovimentacao = "";
                                         const tabelas = document.querySelectorAll('table');
-                                        let tabFin = null;
-                                        tabelas.forEach(t => {
-                                            if (t.innerText.toUpperCase().includes('TIPO | FORMA'))
-                                                tabFin = t;
+                                        let tabelaFinanceira = null;
+
+                                        tabelas.forEach((t) => {
+                                            const txt = t.innerText.toUpperCase();
+                                            if (txt.includes('TIPO | FORMA') || txt.includes(
+                                                    'DESCRIÇÃO') || txt.includes('PAGADOR / GESTOR')) {
+                                                tabelaFinanceira = t;
+                                            }
                                         });
 
-                                        if (tabFin) {
-                                            tabFin.querySelectorAll('tbody tr').forEach(linha => {
+                                        if (!tabelaFinanceira && tabelas.length > 0) {
+                                            tabelaFinanceira = tabelas[tabelas.length - 1];
+                                        }
+
+                                        if (tabelaFinanceira) {
+                                            const linhas = tabelaFinanceira.querySelectorAll('tbody tr');
+                                            linhas.forEach((linha) => {
                                                 if (linha.cells.length < 6 || linha.innerText.includes(
                                                         'Nenhuma')) return;
 
                                                 const cols = linha.cells;
-                                                const formaStr = cols[3].innerText.trim().toUpperCase();
-                                                const valorTxt = cols[5].innerText.trim();
+                                                const hora = cols[0].innerText.trim();
+                                                const pagador = cols[2].innerText.split('\n')[0].trim();
+                                                let formaOriginal = cols[3].innerText.trim()
+                                                    .toUpperCase();
+                                                let formaExibicao = "";
 
-                                                // Converte texto "R$ 60,00" para número real
-                                                const vNum = parseFloat(valorTxt.replace(/[^\d,-]/g, '')
-                                                    .replace(',', '.')) || 0;
-
-                                                let exibicao = "";
-                                                if (formaStr.includes('PIX')) {
-                                                    exibicao = 'PIX';
-                                                    sPix += vNum;
-                                                } else if (formaStr.includes('DINHEIRO') || formaStr
-                                                    .includes('ESPECIE')) {
-                                                    exibicao = 'DINHEIRO';
-                                                    sDin += vNum;
-                                                } else if (formaStr.includes('CRÉDITO')) {
-                                                    exibicao = 'CARTÃO CRÉDITO';
-                                                    sCre += vNum;
+                                                if (formaOriginal.includes('CRÉDITO') || formaOriginal
+                                                    .includes('CREDIT')) {
+                                                    formaExibicao = 'CARTÃO CRÉDITO';
+                                                } else if (formaOriginal.includes('DÉBITO') ||
+                                                    formaOriginal.includes('DEBIT')) {
+                                                    formaExibicao = 'CARTÃO DÉBITO';
+                                                } else if (formaOriginal.includes('PIX')) {
+                                                    formaExibicao = 'PIX';
+                                                } else if (formaOriginal.includes('DINHEIRO') ||
+                                                    formaOriginal.includes('ESPECIE')) {
+                                                    formaExibicao = 'DINHEIRO';
                                                 } else {
-                                                    exibicao = 'CARTÃO DÉBITO';
-                                                    sDeb += vNum;
+                                                    formaExibicao = formaOriginal.replace(
+                                                        'SINAL/ENTRADA', '').replace('PAGAMENTO',
+                                                        '').trim() || 'OUTRO';
                                                 }
-                                                sTotal += vNum;
 
-                                                htmlMovimentacao += `
-                                    <div class="flex border-b" style="display:flex; justify-content:space-between; border-bottom:1px dashed #000; padding:2px 0; font-family:monospace;">
-                                        <div style="text-align:left;">
-                                            <span style="font-size:10px; font-weight:bold;">${cols[0].innerText} - ${cols[2].innerText.split('\n')[0]}</span><br>
-                                            <span style="font-size:9px;">[${exibicao}]</span>
-                                        </div>
-                                        <span style="font-size:10px; font-weight:bold;">${valorTxt}</span>
-                                    </div>`;
+                                                const valor = cols[5].innerText.trim();
+                                                if (valor && valor !== "R$ 0,00" && !valor.includes(
+                                                    '-')) {
+                                                    htmlMovimentacao += `
+                                        <div class="flex border-b" style="display: flex; justify-content: space-between; margin-bottom: 3px; border-bottom: 1px dashed #000; padding: 2px 0; font-family: monospace;">
+                                            <div style="text-align: left; max-width: 72%;">
+                                                <span style="font-weight: bold; font-size: 10px;">${hora} - ${pagador}</span><br>
+                                                <span style="font-size: 9px; color: #333; font-weight: bold;">[${formaExibicao}]</span>
+                                            </div>
+                                            <span style="font-weight: bold; font-size: 10px; align-self: center;">${valor}</span>
+                                        </div>`;
+                                                }
                                             });
                                         }
 
-                                        // Formatação BRL e Injeção no Modal de Resumo
-                                        const f = (v) => v.toLocaleString('pt-br', {
-                                            style: 'currency',
-                                            currency: 'BRL'
-                                        });
-
-                                        if (document.getElementById('resumoPix')) document.getElementById(
-                                            'resumoPix').innerText = f(sPix);
-                                        if (document.getElementById('resumoDinheiro')) document.getElementById(
-                                            'resumoDinheiro').innerText = f(sDin);
-                                        if (document.getElementById('resumoCredito')) document.getElementById(
-                                            'resumoCredito').innerText = f(sCre);
-                                        if (document.getElementById('resumoDebito')) document.getElementById(
-                                            'resumoDebito').innerText = f(sDeb);
-                                        if (document.getElementById('resumoTotal')) document.getElementById(
-                                            'resumoTotal').innerText = f(sTotal);
-
-                                        // Data e Exibição
-                                        const dataCaixa = document.getElementById('js_cashierDate')?.value
-                                            .split('-').reverse().join('/') || '';
-                                        if (document.getElementById('resumoDataInfo')) {
-                                            document.getElementById('resumoDataInfo').innerText =
-                                                `Gerenciamento de Caixa - ${dataCaixa}`;
-                                        }
-
+                                        // Injeta a lista e abre o modal final
                                         const container = document.getElementById('resumoListaAgendamentos');
                                         if (container) container.innerHTML = htmlMovimentacao ||
-                                            "SEM MOVIMENTAÇÕES.";
+                                            "SEM MOVIMENTAÇÕES REGISTRADAS.";
 
                                         const modalResumo = document.getElementById('modalResumoFinal');
                                         if (modalResumo) modalResumo.classList.replace('hidden', 'flex');
@@ -2383,8 +2401,12 @@
                                 }
                             })
                             .catch(err => {
-                                console.error("Erro Ajax:", err);
+                                console.error(err);
                                 window.caixaProcessandoGlobal[formId] = false;
+                                if (btn) {
+                                    btn.disabled = false;
+                                    btn.innerText = "TENTAR NOVAMENTE";
+                                }
                             });
                     };
 
@@ -2401,11 +2423,12 @@
                 };
             }
 
-            // --- 🖨️ FUNÇÃO DE IMPRESSÃO TÉRMICA CENTRALIZADA (VERSÃO FINAL) ---
+            // --- 🖨️ FUNÇÃO DE IMPRESSÃO TÉRMICA CENTRALIZADA ---
             function imprimirResumoTermico() {
                 const printableElement = document.getElementById('printableArea');
                 if (!printableElement) return alert("Erro: Área de impressão não encontrada.");
 
+                // Captura o conteúdo atualizado do modal de resumo
                 const conteudo = printableElement.innerHTML;
                 const win = window.open('', '_blank', 'width=300,height=600');
 
@@ -2415,61 +2438,55 @@
         <!DOCTYPE html>
         <html>
             <head>
-                <title>MAIATECH - Fechamento de Caixa</title>
+                <title>Impressão de Resumo</title>
                 <style>
+                    /* Configurações para impressora térmica de 58mm ou 80mm */
                     @page { margin: 0; }
                     body {
                         font-family: 'Courier New', monospace;
-                        width: 72mm;
+                        width: 72mm; /* Ajuste comum para papel de 80mm */
                         margin: 0 auto;
-                        padding: 5px;
-                        font-size: 12px;
-                        line-height: 1.2;
+                        padding: 10px;
+                        font-size: 11px;
+                        line-height: 1.3;
                         color: #000;
-                        background-color: #fff;
                     }
-                    /* Força o preto total para garantir leitura na térmica */
-                    * { color: #000 !important; background: none !important; }
-
                     .font-black { font-weight: bold; text-transform: uppercase; }
-                    .text-xl { font-size: 16px; font-weight: bold; }
-                    .text-xs { font-size: 10px; }
-
                     .flex {
                         display: flex;
                         justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 2px;
+                        align-items: flex-start;
+                        margin-bottom: 4px;
                     }
-                    .border-b, .border-t {
-                        border-bottom: 1px dashed #000 !important;
-                        border-top: none !important;
-                        margin: 5px 0;
+                    .border-b {
+                        border-bottom: 1px dashed #000;
+                        margin-bottom: 6px;
+                        padding-bottom: 4px;
                     }
+                    .mb-4 { margin-bottom: 12px; }
                     .text-center { text-align: center; }
-                    .mb-4 { margin-bottom: 10px; }
-                    .mt-4 { margin-top: 10px; }
 
-                    /* Esconde ícones e botões na impressão */
-                    svg, button, .print\\:hidden, .hidden, .bg-green-100 {
+                    /* Ocultar elementos desnecessários na impressão */
+                    svg, button, .print\\:hidden, .hidden {
                         display: none !important;
                     }
 
-                    /* Ajuste específico para a lista de movimentações */
-                    #resumoListaAgendamentos div {
-                        border-bottom: 1px dashed #ccc;
-                        padding: 2px 0;
-                    }
+                    /* Garante que o texto dentro da flex não quebre o layout */
+                    .flex > div { text-align: left; }
+                    .flex > span:last-child { text-align: right; min-width: 60px; }
                 </style>
             </head>
             <body>
-                ${conteudo}
+                <div class="text-center">
+                    ${conteudo}
+                </div>
                 <script>
                     window.onload = function() {
+                        // Pequeno delay para garantir renderização de fontes
                         setTimeout(function() {
                             window.print();
                             window.close();
-                        }, 300);
+                        }, 250);
                     };
                 <\/script>
             </body>
@@ -2527,8 +2544,7 @@
                             helper.classList.remove('text-blue-500');
                             helper.classList.add('text-gray-400');
                         } else {
-                            helper.innerText =
-                                "* ESTA OPERAÇÃO AFETARÁ O SALDO DIGITAL DO BANCO (PIX).";
+                            helper.innerText = "* ESTA OPERAÇÃO AFETARÁ O SALDO DIGITAL DO BANCO (PIX).";
                             helper.classList.remove('text-gray-400');
                             helper.classList.add('text-blue-500');
                         }

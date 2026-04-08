@@ -812,19 +812,15 @@
                                 </div>
                                 <div>
                                     <label for="payment_method_quick"
-                                        class="block text-xs font-bold text-gray-500 uppercase tracking-tighter">Método
-                                        de Pagamento</label>
+                                        class="block text-xs font-bold text-gray-500 uppercase">Método</label>
                                     <select name="payment_method" id="payment_method_quick" required
-                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 text-sm h-10 font-bold">
-                                        <option value="">Selecione...</option>
-
-                                        @foreach (\App\Models\FinancialTransaction::getPaymentMethods() as $key => $label)
-                                            <option value="{{ $key }}">{{ $label }}</option>
-                                        @endforeach
-
+                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 text-sm h-10">
+                                        <option value="">Selecione</option>
+                                        <option value="pix">PIX</option>
+                                        <option value="cartao">Cartão</option>
+                                        <option value="dinheiro">Dinheiro</option>
+                                        <option value="outro">Sem Sinal</option>
                                     </select>
-                                    <p class="text-[9px] text-gray-400 mt-1 italic leading-tight">* Selecione Crédito
-                                        ou Débito para fechamentos precisos.</p>
                                 </div>
                             </div>
 
@@ -2114,8 +2110,8 @@
             <div class="grid grid-cols-1 gap-2">
                 ${!isFinalized && status !== 'cancelled' ?
                     `<button onclick="openPaymentModal('${reservaId}')" class="w-full px-4 py-3 bg-green-600 text-white font-black rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2">
-                                                <span>💰 IR PARA O CAIXA</span>
-                                            </button>` : `<div class="p-2 bg-green-50 border border-green-200 text-green-700 text-center rounded-lg font-bold text-sm">✅ PAGO / FINALIZADA</div>`}
+                                        <span>💰 IR PARA O CAIXA</span>
+                                    </button>` : `<div class="p-2 bg-green-50 border border-green-200 text-green-700 text-center rounded-lg font-bold text-sm">✅ PAGO / FINALIZADA</div>`}
 
                 <div class="grid grid-cols-2 gap-2 mt-1">
                     <button onclick="cancelarPontual('${reservaId}', ${isRecurrent}, '${paidAmountString}', ${isFinalized})"
@@ -2130,14 +2126,14 @@
 
                 ${!isFinalized && status !== 'no_show' ?
                     `<button onclick="openNoShowModal('${reservaId}', '${clientNameRaw.replace(/'/g, "\\'")}', '${paidAmountString}', ${isFinalized}, '${totalPriceString}')"
-                                                class="w-full py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-200 shadow-sm hover:bg-red-100 transition uppercase">
-                                                FALTA (NO-SHOW)
-                                            </button>` : ''}
+                                        class="w-full py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-200 shadow-sm hover:bg-red-100 transition uppercase">
+                                        FALTA (NO-SHOW)
+                                    </button>` : ''}
 
                 ${isRecurrent ?
                     `<button onclick="cancelarSerie('${reservaId}', '${paidAmountString}', ${isFinalized})" class="w-full mt-1 px-4 py-2 bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-red-800 transition uppercase">
-                                                CANCELAR SÉRIE
-                                            </button>` : ''}
+                                        CANCELAR SÉRIE
+                                    </button>` : ''}
 
                 <button onclick="closeEventModal()" class="w-full mt-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
                     Fechar

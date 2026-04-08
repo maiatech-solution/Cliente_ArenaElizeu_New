@@ -2281,90 +2281,101 @@
                                     if (formId === 'closeCashForm') {
                                         if (typeof closeCloseCashModal === 'function') closeCloseCashModal();
 
-                                        // --- 🧮 LÓGICA DE SOMA REAL (TABELA) ---
-                                        let htmlMovimentacao = "";
-                                        let sPix = 0,
-                                            sDin = 0,
-                                            sCre = 0,
-                                            sDeb = 0,
-                                            sTotal = 0;
-
-                                        const tabelas = document.querySelectorAll('table');
-                                        let tabFin = null;
-                                        tabelas.forEach(t => {
-                                            if (t.innerText.toUpperCase().includes('TIPO | FORMA'))
-                                                tabFin = t;
-                                        });
-
-                                        if (tabFin) {
-                                            tabFin.querySelectorAll('tbody tr').forEach(linha => {
-                                                if (linha.cells.length < 6 || linha.innerText.includes(
-                                                        'Nenhuma')) return;
-
-                                                const cols = linha.cells;
-                                                const formaStr = cols[3].innerText.trim().toUpperCase();
-                                                const valorTxt = cols[5].innerText.trim();
-
-                                                // Converte texto "R$ 60,00" para número real
-                                                const vNum = parseFloat(valorTxt.replace(/[^\d,-]/g, '')
-                                                    .replace(',', '.')) || 0;
-
-                                                let exibicao = "";
-                                                if (formaStr.includes('PIX')) {
-                                                    exibicao = 'PIX';
-                                                    sPix += vNum;
-                                                } else if (formaStr.includes('DINHEIRO') || formaStr
-                                                    .includes('ESPECIE')) {
-                                                    exibicao = 'DINHEIRO';
-                                                    sDin += vNum;
-                                                } else if (formaStr.includes('CRÉDITO')) {
-                                                    exibicao = 'CARTÃO CRÉDITO';
-                                                    sCre += vNum;
-                                                } else {
-                                                    exibicao = 'CARTÃO DÉBITO';
-                                                    sDeb += vNum;
-                                                }
-                                                sTotal += vNum;
-
-                                                htmlMovimentacao += `
-                                    <div class="flex border-b" style="display:flex; justify-content:space-between; border-bottom:1px dashed #000; padding:2px 0; font-family:monospace;">
-                                        <div style="text-align:left;">
-                                            <span style="font-size:10px; font-weight:bold;">${cols[0].innerText} - ${cols[2].innerText.split('\n')[0]}</span><br>
-                                            <span style="font-size:9px;">[${exibicao}]</span>
-                                        </div>
-                                        <span style="font-size:10px; font-weight:bold;">${valorTxt}</span>
-                                    </div>`;
-                                            });
-                                        }
-
-                                        // Formatação BRL e Injeção no Modal de Resumo
-                                        const f = (v) => v.toLocaleString('pt-br', {
+                                        // --- 🕵️ BLOCO DE CAPTURA BRUTA (SISTEMA) ---
+                                        const f = (v) => parseFloat(v || 0).toLocaleString('pt-br', {
                                             style: 'currency',
                                             currency: 'BRL'
                                         });
 
-                                        if (document.getElementById('resumoPix')) document.getElementById(
-                                            'resumoPix').innerText = f(sPix);
-                                        if (document.getElementById('resumoDinheiro')) document.getElementById(
-                                            'resumoDinheiro').innerText = f(sDin);
-                                        if (document.getElementById('resumoCredito')) document.getElementById(
-                                            'resumoCredito').innerText = f(sCre);
-                                        if (document.getElementById('resumoDebito')) document.getElementById(
-                                            'resumoDebito').innerText = f(sDeb);
-                                        if (document.getElementById('resumoTotal')) document.getElementById(
-                                            'resumoTotal').innerText = f(sTotal);
+                                        // Pegamos os valores direto das variáveis ocultas que o Laravel gera na sua página
+                                        const rawTotal = document.getElementById('js_valorLiquidoArenaRaw')
+                                            ?.value || 0;
+                                        const rawDinheiro = document.getElementById('js_saldoFisicoGavetaRaw')
+                                            ?.value || 0;
+                                        const rawPix = document.getElementById('js_saldoDigitalBancoRaw')
+                                            ?.value || 0;
 
-                                        // Data e Exibição
-                                        const dataCaixa = document.getElementById('js_cashierDate')?.value
-                                            .split('-').reverse().join('/') || '';
-                                        if (document.getElementById('resumoDataInfo')) {
-                                            document.getElementById('resumoDataInfo').innerText =
-                                                `Gerenciamento de Caixa - ${dataCaixa}`;
+                                        // Cartão é a diferença do que não é dinheiro nem pix
+                                        const rawCartao = parseFloat(rawTotal) - (parseFloat(rawDinheiro) +
+                                            parseFloat(rawPix));
+
+                                        console.log("🔍 DEBUG CAPTURA DIRETA:", {
+                                            rawTotal,
+                                            rawDinheiro,
+                                            rawPix,
+                                            rawCartao
+                                        });
+
+                                        // Injetamos no Modal usando a formatação correta
+                                        if (document.getElementById('resumoPix'))
+                                            document.getElementById('resumoPix').innerText = f(rawPix);
+
+                                        if (document.getElementById('resumoDinheiro'))
+                                            document.getElementById('resumoDinheiro').innerText = f(
+                                            rawDinheiro);
+
+                                        if (document.getElementById('resumoTotal'))
+                                            document.getElementById('resumoTotal').innerText = f(rawTotal);
+
+                                        // Como Crédito e Débito são detalhamentos novos, vamos tentar capturá-los
+                                        // Se estiverem zerados na tela, jogamos o total de cartões no Débito para não vir zerado
+                                        const valCredito = document.getElementById('displayCreditoModal')
+                                            ?.innerText || 'R$ 0,00';
+                                        const valDebito = document.getElementById('displayDebitoModal')
+                                            ?.innerText || 'R$ 0,00';
+
+                                        if (document.getElementById('resumoCredito'))
+                                            document.getElementById('resumoCredito').innerText = valCredito !==
+                                            'R$ 0,00' ? valCredito : '---';
+
+                                        if (document.getElementById('resumoDebito'))
+                                            document.getElementById('resumoDebito').innerText = valDebito !==
+                                            'R$ 0,00' ? valDebito : f(rawCartao);
+
+                                        // 3. 📝 VARREDURA DA TABELA PARA O COMPROVANTE
+                                        let htmlMovimentacao = "";
+                                        const tabelas = document.querySelectorAll('table');
+                                        let tabelaFinanceira = null;
+
+                                        tabelas.forEach((t) => {
+                                            if (t.innerText.toUpperCase().includes('TIPO | FORMA'))
+                                                tabelaFinanceira = t;
+                                        });
+
+                                        if (!tabelaFinanceira && tabelas.length > 0) tabelaFinanceira = tabelas[
+                                            tabelas.length - 1];
+
+                                        if (tabelaFinanceira) {
+                                            const linhas = tabelaFinanceira.querySelectorAll('tbody tr');
+                                            linhas.forEach((linha) => {
+                                                if (linha.cells.length < 6 || linha.innerText.includes(
+                                                        'Nenhuma')) return;
+
+                                                const cols = linha.cells;
+                                                const hora = cols[0].innerText.trim();
+                                                const pagador = cols[2].innerText.split('\n')[0].trim();
+                                                let forma = cols[3].innerText.trim().toUpperCase();
+
+                                                if (forma.includes('CRÉDITO')) forma = 'CARTÃO CRÉDITO';
+                                                else if (forma.includes('DÉBITO')) forma =
+                                                    'CARTÃO DÉBITO';
+                                                else if (forma.includes('PIX')) forma = 'PIX';
+                                                else if (forma.includes('DINHEIRO')) forma = 'DINHEIRO';
+
+                                                htmlMovimentacao += `
+                                    <div class="flex border-b" style="display: flex; justify-content: space-between; border-bottom: 1px dashed #000; padding: 2px 0; font-family: monospace;">
+                                        <div style="text-align: left;">
+                                            <span style="font-size: 10px; font-weight: bold;">${hora} - ${pagador}</span><br>
+                                            <span style="font-size: 9px;">[${forma}]</span>
+                                        </div>
+                                        <span style="font-size: 10px; font-weight: bold;">${cols[5].innerText}</span>
+                                    </div>`;
+                                            });
                                         }
 
                                         const container = document.getElementById('resumoListaAgendamentos');
                                         if (container) container.innerHTML = htmlMovimentacao ||
-                                            "SEM MOVIMENTAÇÕES.";
+                                            "SEM MOVIMENTAÇÕES REGISTRADAS.";
 
                                         const modalResumo = document.getElementById('modalResumoFinal');
                                         if (modalResumo) modalResumo.classList.replace('hidden', 'flex');
@@ -2383,7 +2394,7 @@
                                 }
                             })
                             .catch(err => {
-                                console.error("Erro Ajax:", err);
+                                console.error(err);
                                 window.caixaProcessandoGlobal[formId] = false;
                             });
                     };
