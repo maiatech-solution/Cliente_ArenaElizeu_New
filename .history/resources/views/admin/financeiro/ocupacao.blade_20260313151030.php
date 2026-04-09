@@ -129,26 +129,17 @@
                         <div
                             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-8">
                             @foreach ($lista as $r)
-                                @php
-                                    // 1. Definição de variáveis financeiras
-                                    $totalPago = (float) ($r->total_paid ?? 0);
-                                    $precoFinal = (float) ($r->final_price ?? $r->price);
-                                    $statusReserva = $r->status;
-
-                                    // 2. Verificação de Voucher (Garante que o Maia veja o que é cortesia)
-                                    $hasVoucher = $r->transactions->where('payment_method', 'voucher')->count() > 0;
-
-                                    // 3. Classe dinâmica para o fundo do card
-                                    $cardBgClass = $hasVoucher
-                                        ? 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/30'
-                                        : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
-                                @endphp
-
                                 <div
-                                    class="p-4 rounded-3xl border shadow-sm hover:shadow-md transition-all relative overflow-hidden group {{ $cardBgClass }}">
+                                    class="bg-white dark:bg-gray-800 p-4 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
 
                                     {{-- INDICADOR DE STATUS FINANCEIRO E OPERACIONAL --}}
                                     <div class="absolute top-0 right-0">
+                                        @php
+                                            $totalPago = (float) ($r->total_paid ?? 0);
+                                            $precoFinal = (float) ($r->final_price ?? $r->price);
+                                            $statusReserva = $r->status; // Assume que o campo no banco chama 'status'
+                                        @endphp
+
                                         @if ($statusReserva == 'no_show')
                                             {{-- Caso de Falta --}}
                                             <span
@@ -160,12 +151,6 @@
                                             <span
                                                 class="bg-gray-700 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest shadow-sm">
                                                 Rejeitada
-                                            </span>
-                                        @elseif($hasVoucher)
-                                            {{-- Caso de Cortesia --}}
-                                            <span
-                                                class="bg-amber-500 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest shadow-sm italic">
-                                                🎟️ Cortesia
                                             </span>
                                         @elseif($totalPago >= $precoFinal && $precoFinal > 0)
                                             {{-- Pago Total --}}
@@ -180,9 +165,9 @@
                                                 Parcial
                                             </span>
                                         @else
-                                            {{-- Pendente --}}
+                                            {{-- Pendente Real --}}
                                             <span
-                                                class="bg-gray-400 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest shadow-sm">
+                                                class="bg-amber-500 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest shadow-sm">
                                                 Pendente
                                             </span>
                                         @endif
@@ -202,26 +187,19 @@
                                         {{ $r->client_name }}
                                     </div>
 
-                                    {{-- RODAPÉ DO CARD --}}
                                     <div
                                         class="flex items-center justify-between border-t border-gray-50 dark:border-gray-700 pt-3">
                                         <div
                                             class="text-[9px] font-black text-gray-400 uppercase tracking-tighter italic">
-                                            Arena:
-                                            <span
+                                            {{-- Melhoria: Badge Visual para Arena --}}
+                                            Arena: <span
                                                 class="text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-md">
                                                 {{ $r->arena?->name ?? '---' }}
                                             </span>
                                         </div>
-
                                         <div
-                                            class="text-[10px] font-mono font-black italic {{ $hasVoucher ? 'text-amber-600' : 'text-gray-700 dark:text-gray-300' }}">
+                                            class="text-[10px] font-mono font-black text-gray-700 dark:text-gray-300 italic">
                                             R$ {{ number_format($precoFinal, 2, ',', '.') }}
-                                            @if ($hasVoucher)
-                                                <span
-                                                    class="text-[7px] block text-right uppercase leading-none mt-0.5 font-sans">Via
-                                                    Voucher</span>
-                                            @endif
                                         </div>
                                     </div>
                                 </div>
