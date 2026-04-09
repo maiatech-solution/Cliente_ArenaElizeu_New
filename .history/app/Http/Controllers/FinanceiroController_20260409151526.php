@@ -332,29 +332,29 @@ class FinanceiroController extends Controller
         $arenaId = $request->get('arena_id');
         $mes = $request->input('mes', now()->month);
         $ano = $request->input('ano', now()->year);
+        $hoje = now()->format('Y-m-d');
 
-        $query = \App\Models\Reserva::select(
+        $query = Reserva::select(
             'client_name',
             'client_contact',
             'user_id',
-            // 💰 Soma o faturamento real (tudo que entrou no total_paid)
-            \DB::raw('SUM(total_paid) as total_gasto'),
-            // ⚽ Conta todas as reservas pagas no período, inclusive as futuras pagas antecipadamente
-            // Isso garante que o Alan apareça com "2 Jogos" se pagou por dois IDs.
-            \DB::raw("COUNT(CASE WHEN total_paid > 0 THEN 1 END) as total_reservas")
+            // 💰 Soma o que o cliente efetivamente pagou (inclui Vouchers se estiverem no total_paid)
+            DB::raw('SUM(total_paid) as total_gasto'),
+            // ⚽ Conta apenas partidas que não foram futuras e tiveram pagamento
+            DB::raw("COUNT(CASE WHEN total_paid > 0 AND date <= '$hoje' THEN 1 END) as total_reservas")
         )
-            // 🎯 Status que representam ocupação e financeiro positivo
+            // 🎯 Proteção: Apenas status válidos de faturamento, excluindo manutenção e rejeitadas
             ->whereIn('status', [
-                \App\Models\Reserva::STATUS_CONFIRMADA,
-                \App\Models\Reserva::STATUS_CONCLUIDA,
-                \App\Models\Reserva::STATUS_LANCADA_CAIXA
+                Reserva::STATUS_CONFIRMADA,
+                Reserva::STATUS_CONCLUIDA,
+                Reserva::STATUS_LANCADA_CAIXA
             ])
             ->where('status', '!=', 'maintenance') // 🛡️ Blindagem contra manutenção
             ->where('total_paid', '>', 0)
             ->whereYear('date', $ano)
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId));
 
-        // Filtro de mês (suporta 'all')
+        // Filtro de mês inteligente (suporta 'all')
         if ($mes !== 'all') {
             $query->whereMonth('date', (int)$mes);
         }
