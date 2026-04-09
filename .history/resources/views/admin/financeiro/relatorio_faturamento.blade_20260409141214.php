@@ -136,32 +136,31 @@
                 </div>
 
                 {{-- Iteração dos métodos --}}
-                @foreach ($totaisPorMetodo as $metodo => $valor)
-                    {{-- 🚫 ESCONDER CARDS ZERADOS --}}
-                    @if ($valor != 0)
-                        @php
-                            // Estilização especial para o Voucher para destacar que é cortesia
-                            $isVoucher = $metodo === 'voucher';
-                            $cardClass = $isVoucher
-                                ? 'bg-amber-50 border-amber-500 dark:bg-amber-900/20'
-                                : 'bg-white dark:bg-gray-800 border-emerald-500';
+              @foreach ($totaisPorMetodo as $metodo => $valor)
+    {{-- 🚫 ESCONDER CARDS ZERADOS --}}
+    @if ($valor != 0)
+        @php
+            // Estilização especial para o Voucher para destacar que é cortesia
+            $isVoucher = $metodo === 'voucher';
+            $cardClass = $isVoucher
+                ? 'bg-amber-50 border-amber-500 dark:bg-amber-900/20'
+                : 'bg-white dark:bg-gray-800 border-emerald-500';
 
-                            if ($valor < 0) {
-                                $cardClass = 'bg-white dark:bg-gray-800 border-red-500';
-                            }
-                        @endphp
+            if ($valor < 0) {
+                $cardClass = 'bg-white dark:bg-gray-800 border-red-500';
+            }
+        @endphp
 
-                        <div class="p-4 rounded-xl border-b-4 shadow-sm {{ $cardClass }}">
-                            <p
-                                class="text-[10px] text-gray-500 dark:text-gray-400 font-black uppercase tracking-tighter">
-                                {{ $isVoucher ? '🎟️ ' : '' }}{{ $traducaoMetodos[strtolower($metodo)] ?? ucfirst($metodo) }}
-                            </p>
-                            <p class="text-xl font-black text-gray-800 dark:text-white mt-1">
-                                R$ {{ number_format($valor, 2, ',', '.') }}
-                            </p>
-                        </div>
-                    @endif
-                @endforeach
+        <div class="p-4 rounded-xl border-b-4 shadow-sm {{ $cardClass }}">
+            <p class="text-[10px] text-gray-500 dark:text-gray-400 font-black uppercase tracking-tighter">
+                {{ $isVoucher ? '🎟️ ' : '' }}{{ $traducaoMetodos[strtolower($metodo)] ?? ucfirst($metodo) }}
+            </p>
+            <p class="text-xl font-black text-gray-800 dark:text-white mt-1">
+                R$ {{ number_format($valor, 2, ',', '.') }}
+            </p>
+        </div>
+    @endif
+@endforeach
             </div>
 
             {{-- 📄 TABELA DETALHADA --}}

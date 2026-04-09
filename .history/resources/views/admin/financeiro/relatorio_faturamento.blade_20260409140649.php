@@ -126,41 +126,26 @@
             </div>
 
             {{-- 📊 CARDS DE RESUMO --}}
-            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                {{-- Card Principal: Faturamento Real (Dinheiro que entrou) --}}
-                <div class="bg-indigo-600 p-6 rounded-xl shadow-lg text-white col-span-1 md:col-span-2">
-                    <p class="text-[10px] opacity-80 font-black uppercase tracking-widest">Faturamento Real
-                        (Caixa/Banco)</p>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {{-- Card Faturamento com cor dinâmica para saídas --}}
+                <div
+                    class="{{ $faturamentoTotal < 0 ? 'bg-red-600' : 'bg-indigo-600' }} p-6 rounded-xl shadow-lg text-white">
+                    <p class="text-xs opacity-80 font-bold uppercase tracking-widest">
+                        {{ $faturamentoTotal < 0 ? 'Total Saídas' : 'Faturamento Período' }}
+                    </p>
                     <p class="text-2xl font-black mt-1 italic">R$ {{ number_format($faturamentoTotal, 2, ',', '.') }}
                     </p>
                 </div>
 
-                {{-- Iteração dos métodos --}}
                 @foreach ($totaisPorMetodo as $metodo => $valor)
-                    {{-- 🚫 ESCONDER CARDS ZERADOS --}}
-                    @if ($valor != 0)
-                        @php
-                            // Estilização especial para o Voucher para destacar que é cortesia
-                            $isVoucher = $metodo === 'voucher';
-                            $cardClass = $isVoucher
-                                ? 'bg-amber-50 border-amber-500 dark:bg-amber-900/20'
-                                : 'bg-white dark:bg-gray-800 border-emerald-500';
-
-                            if ($valor < 0) {
-                                $cardClass = 'bg-white dark:bg-gray-800 border-red-500';
-                            }
-                        @endphp
-
-                        <div class="p-4 rounded-xl border-b-4 shadow-sm {{ $cardClass }}">
-                            <p
-                                class="text-[10px] text-gray-500 dark:text-gray-400 font-black uppercase tracking-tighter">
-                                {{ $isVoucher ? '🎟️ ' : '' }}{{ $traducaoMetodos[strtolower($metodo)] ?? ucfirst($metodo) }}
-                            </p>
-                            <p class="text-xl font-black text-gray-800 dark:text-white mt-1">
-                                R$ {{ number_format($valor, 2, ',', '.') }}
-                            </p>
-                        </div>
-                    @endif
+                    <div
+                        class="bg-white dark:bg-gray-800 p-6 rounded-xl border-b-4 {{ $valor < 0 ? 'border-red-500' : 'border-emerald-500' }} shadow-sm">
+                        <p class="text-xs text-gray-500 font-bold uppercase">
+                            {{ $traducaoMetodos[strtolower($metodo)] ?? ucfirst($metodo) }}
+                        </p>
+                        <p class="text-2xl font-black text-gray-800 dark:text-white mt-1">R$
+                            {{ number_format($valor, 2, ',', '.') }}</p>
+                    </div>
                 @endforeach
             </div>
 
@@ -185,55 +170,13 @@
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                             @forelse($transacoes as $t)
-                                @php
-                                    $isVoucher = $t->payment_method === 'voucher';
-
-                                    $tipoMapeado = [
-                                        'signal' => ['label' => 'Sinal', 'class' => 'bg-blue-100 text-blue-700'],
-                                        'payment' => [
-                                            'label' => 'Pagamento',
-                                            'class' => 'bg-emerald-100 text-emerald-700',
-                                        ],
-                                        'full_payment' => [
-                                            'label' => 'Total',
-                                            'class' => 'bg-emerald-100 text-emerald-700',
-                                        ],
-                                        'refund' => ['label' => 'Estorno', 'class' => 'bg-red-100 text-red-700'],
-                                        'sangria' => [
-                                            'label' => 'Sangria',
-                                            'class' => 'bg-red-50 text-red-600 border border-red-100',
-                                        ],
-                                        'reforco' => [
-                                            'label' => 'Reforço',
-                                            'class' => 'bg-emerald-50 text-emerald-600 border border-emerald-100',
-                                        ],
-                                    ];
-
-                                    $chaveTipo = strtolower($t->type);
-                                    $exibicao = $tipoMapeado[$chaveTipo] ?? [
-                                        'label' => strtoupper($t->type),
-                                        'class' => 'bg-gray-100 text-gray-600',
-                                    ];
-
-                                    // Se for Voucher, forçamos uma cor neutra na badge de tipo
-                                    if ($isVoucher) {
-                                        $exibicao['class'] = 'bg-amber-100 text-amber-700 border border-amber-200';
-                                    }
-
-                                    // Garante cor vermelha para saídas (exceto estorno)
-                                    if ($t->amount < 0 && $chaveTipo != 'refund') {
-                                        $exibicao['class'] = 'bg-red-50 text-red-600 border border-red-100';
-                                    }
-                                @endphp
-
-                                <tr
-                                    class="text-sm hover:bg-gray-50 dark:hover:bg-gray-900/50 transition {{ $isVoucher ? 'opacity-80' : '' }}">
+                                <tr class="text-sm hover:bg-gray-50 dark:hover:bg-gray-900/50 transition">
                                     {{-- Data --}}
                                     <td class="px-6 py-4 dark:text-gray-400 font-mono text-xs whitespace-nowrap italic">
                                         {{ $t->paid_at->format('d/m/Y H:i') }}
                                     </td>
 
-                                    {{-- Unidade --}}
+                                    {{-- Unidade (Segurança Null Safe para Multiarena) --}}
                                     <td class="px-6 py-4">
                                         <span
                                             class="px-2 py-1 rounded-md text-[10px] font-black uppercase bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
@@ -241,7 +184,7 @@
                                         </span>
                                     </td>
 
-                                    {{-- Cliente / Descrição --}}
+                                    {{-- Cliente ou Descrição Avulsa --}}
                                     <td class="px-6 py-4">
                                         <div class="font-bold dark:text-gray-200">
                                             @if ($t->reserva)
@@ -263,30 +206,79 @@
 
                                     {{-- Badge de Tipo e Método --}}
                                     <td class="px-6 py-4 text-center">
+                                        @php
+                                            $tipoMapeado = [
+                                                'signal' => [
+                                                    'label' => 'Sinal',
+                                                    'class' => 'bg-blue-100 text-blue-700',
+                                                ],
+                                                'payment' => [
+                                                    'label' => 'Pagamento',
+                                                    'class' => 'bg-emerald-100 text-emerald-700',
+                                                ],
+                                                'full_payment' => [
+                                                    'label' => 'Total',
+                                                    'class' => 'bg-emerald-100 text-emerald-700',
+                                                ],
+                                                'payment_settlement' => [
+                                                    'label' => 'Acerto',
+                                                    'class' => 'bg-emerald-100 text-emerald-700',
+                                                ],
+                                                'refund' => [
+                                                    'label' => 'Estorno',
+                                                    'class' => 'bg-red-100 text-red-700',
+                                                ],
+                                                'reten_noshow_comp' => [
+                                                    'label' => 'Multa No-Show',
+                                                    'class' => 'bg-amber-100 text-amber-700',
+                                                ],
+                                                'reten_canc_comp' => [
+                                                    'label' => 'Taxa Cancel.',
+                                                    'class' => 'bg-amber-100 text-amber-700',
+                                                ],
+                                                'cash_out' => [
+                                                    'label' => 'Saída',
+                                                    'class' => 'bg-red-100 text-red-700',
+                                                ],
+                                                'sangria' => [
+                                                    'label' => 'Sangria',
+                                                    'class' => 'bg-red-50 text-red-600 border border-red-100',
+                                                ],
+                                                'reforco' => [
+                                                    'label' => 'Reforço',
+                                                    'class' =>
+                                                        'bg-emerald-50 text-emerald-600 border border-emerald-100',
+                                                ],
+                                            ];
+
+                                            $chaveTipo = strtolower($t->type);
+                                            $exibicao = $tipoMapeado[$chaveTipo] ?? [
+                                                'label' => strtoupper($t->type),
+                                                'class' => 'bg-gray-100 text-gray-600',
+                                            ];
+
+                                            // Garante cor vermelha para qualquer valor negativo que não seja estorno
+                                            if ($t->amount < 0 && $chaveTipo != 'refund') {
+                                                $exibicao['class'] = 'bg-red-50 text-red-600 border border-red-100';
+                                            }
+                                        @endphp
+
                                         <span
                                             class="px-2 py-0.5 rounded text-[10px] font-black uppercase {{ $exibicao['class'] }}">
-                                            {{ $isVoucher ? 'CORTESIA' : $exibicao['label'] }}
+                                            {{ $exibicao['label'] }}
                                         </span>
 
                                         <div
-                                            class="text-[10px] mt-1 font-bold uppercase italic tracking-tighter {{ $isVoucher ? 'text-amber-600' : 'text-gray-400' }}">
-                                            {!! $isVoucher ? '🎟️ ' : '' !!}
+                                            class="text-[10px] mt-1 text-gray-400 font-bold uppercase italic tracking-tighter">
                                             {{ $traducaoMetodos[strtolower($t->payment_method)] ?? str_replace('_', ' ', $t->payment_method) }}
                                         </div>
                                     </td>
 
                                     {{-- Valor Dinâmico --}}
-                                    <td class="px-6 py-4 text-right font-mono font-bold">
-                                        @if ($isVoucher)
-                                            <span class="text-gray-400 italic">
-                                                R$ {{ number_format(abs($t->amount), 2, ',', '.') }}
-                                            </span>
-                                        @else
-                                            <span class="{{ $t->amount < 0 ? 'text-red-500' : 'text-emerald-600' }}">
-                                                {{ $t->amount < 0 ? '-' : '' }} R$
-                                                {{ number_format(abs($t->amount), 2, ',', '.') }}
-                                            </span>
-                                        @endif
+                                    <td
+                                        class="px-6 py-4 text-right font-mono font-bold {{ $t->amount < 0 ? 'text-red-500' : 'text-emerald-600' }}">
+                                        {{ $t->amount < 0 ? '-' : '' }} R$
+                                        {{ number_format(abs($t->amount), 2, ',', '.') }}
                                     </td>
                                 </tr>
                             @empty

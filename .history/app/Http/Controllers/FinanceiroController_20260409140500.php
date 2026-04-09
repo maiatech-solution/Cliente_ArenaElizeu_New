@@ -53,21 +53,26 @@ class FinanceiroController extends Controller
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
             ->count();
 
-        // 💸 4. CÁLCULO DE DÍVIDAS PENDENTES (Versão Otimizada)
+        // 💸 4. CÁLCULO DE DÍVIDAS PENDENTES
+        // Note que aqui o Voucher ajuda: se o cara pagou com Voucher, ele NÃO deve mais.
         $totalGlobalDividas = \App\Models\Reserva::whereMonth('date', $mes)
             ->whereYear('date', $ano)
             ->whereIn('status', ['completed', 'debt'])
             ->whereIn('payment_status', ['unpaid', 'partial'])
             ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
-            ->with('transactions') // Puxa tudo de uma vez só (Eager Loading)
+            ->with('transactions')
             ->get()
             ->sum(function ($r) {
                 $valorVenda = (float) ($r->final_price ?? $r->price);
 
-                // Aqui o sum() roda na memória (Collection), não faz novas queries no banco
-                $saldoPagoLiquido = (float) $r->transactions->sum('amount');
+                $somaVinculada = (float) $r->transactions->sum('amount');
+                $somaOrfa = (float) \App\Models\FinancialTransaction::whereNull('reserva_id')
+                    ->where('description', 'LIKE', "%#{$r->id}%")
+                    ->sum('amount');
 
-                return max(0, $valorVenda - round($saldoPagoLiquido, 2));
+                $saldoPagoLiquido = round($somaVinculada + $somaOrfa, 2);
+
+                return max(0, $valorVenda - $saldoPagoLiquido);
             });
 
         // 🎁 5. TOTAL DE CORTESIAS (Vouchers) Concedidas no mês
@@ -92,6 +97,7 @@ class FinanceiroController extends Controller
 
     /**
      * Relatório 01: Faturamento Detalhado (Com Arena, Busca, Paginação e Fluxo)
+     * ATUALIZADO: Com Unificação de Métodos de Pagamento para Fechamento Profissional
      */
     public function relatorioFaturamento(Request $request)
     {
@@ -134,8 +140,8 @@ class FinanceiroController extends Controller
         $queryParaTotais = clone $query;
         $transacoesParaTotais = $queryParaTotais->get();
 
-        // 1. Inicializamos os moldes fixos
-        $totaisPorMetodo = [
+        // 1. Inicializamos os moldes (Garante que a View receba 0.00 se não houver dados)
+        $totaisIniciais = [
             'dinheiro'      => 0,
             'pix'           => 0,
             'credito'       => 0,
@@ -145,31 +151,28 @@ class FinanceiroController extends Controller
             'outro'         => 0,
         ];
 
-        $faturamentoTotal = 0;
+        // 2. Agrupamento por método de pagamento
+        $agrupados = $transacoesParaTotais->groupBy(function ($item) {
+            $metodo = $item->payment_method;
 
-        // 2. Loop único para processar somas e evitar duplicidade entre "Voucher" e "Outro"
-        foreach ($transacoesParaTotais as $item) {
-            $metodoOriginal = strtolower($item->payment_method);
-
-            // Mapeamento robusto: se cair em uma categoria, não cai em "Outro"
-            $categoria = match (true) {
-                in_array($metodoOriginal, ['dinheiro', 'money', 'cash', 'especie', \App\Models\FinancialTransaction::PAYMENT_MONEY]) => 'dinheiro',
-                in_array($metodoOriginal, ['pix', \App\Models\FinancialTransaction::PAYMENT_PIX]) => 'pix',
-                in_array($metodoOriginal, ['credito', 'credit_card', 'credit', \App\Models\FinancialTransaction::PAYMENT_CREDIT]) => 'credito',
-                in_array($metodoOriginal, ['debito', 'debit_card', 'debit', 'cartao', 'card', \App\Models\FinancialTransaction::PAYMENT_DEBIT]) => 'debito',
-                in_array($metodoOriginal, ['transferencia', 'transfer', 'bank', \App\Models\FinancialTransaction::PAYMENT_TRANSFER]) => 'transferencia',
-                in_array($metodoOriginal, ['voucher', 'cortesia', \App\Models\FinancialTransaction::PAYMENT_VOUCHER]) => 'voucher',
+            return match ($metodo) {
+                \App\Models\FinancialTransaction::PAYMENT_MONEY    => 'dinheiro',
+                \App\Models\FinancialTransaction::PAYMENT_PIX      => 'pix',
+                \App\Models\FinancialTransaction::PAYMENT_CREDIT   => 'credito',
+                \App\Models\FinancialTransaction::PAYMENT_DEBIT    => 'debito',
+                \App\Models\FinancialTransaction::PAYMENT_TRANSFER => 'transferencia',
+                \App\Models\FinancialTransaction::PAYMENT_VOUCHER  => 'voucher',
                 default => 'outro',
             };
+        })->map(fn($row) => $row->sum('amount'))->toArray();
 
-            // Soma na categoria específica
-            $totaisPorMetodo[$categoria] += $item->amount;
+        // 3. Mesclamos os valores calculados com os iniciais
+        $totaisPorMetodo = array_merge($totaisIniciais, $agrupados);
 
-            // 💰 3. Soma no Faturamento Real apenas se NÃO for voucher
-            if ($categoria !== 'voucher') {
-                $faturamentoTotal += $item->amount;
-            }
-        }
+        // 💰 4. FATURAMENTO REAL (Soma tudo o que é dinheiro real, ignorando Vouchers)
+        $faturamentoTotal = $transacoesParaTotais
+            ->where('payment_method', '!=', \App\Models\FinancialTransaction::PAYMENT_VOUCHER)
+            ->sum('amount');
 
         // Paginação dos resultados para a tabela
         $transacoes = $query->orderBy('paid_at', 'desc')->paginate(30)->withQueryString();

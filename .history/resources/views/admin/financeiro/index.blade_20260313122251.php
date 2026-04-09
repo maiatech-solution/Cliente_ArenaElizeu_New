@@ -52,12 +52,6 @@
                     </p>
                     <p class="text-2xl font-black mt-1 italic">R$ {{ number_format($faturamentoMensal, 2, ',', '.') }}
                     </p>
-
-                    {{-- 🎁 Informativo de Cortesias --}}
-                    <div class="mt-2 pt-2 border-t border-white/20">
-                        <p class="text-[9px] opacity-70 uppercase font-bold">Cortesias (Vouchers): R$
-                            {{ number_format($totalVouchersMes, 2, ',', '.') }}</p>
-                    </div>
                 </div>
 
                 {{-- Card Ocupação --}}
