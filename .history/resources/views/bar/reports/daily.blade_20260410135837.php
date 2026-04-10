@@ -106,100 +106,88 @@
         </div>
 
         {{-- 📈 GRÁFICO DE PERFORMANCE DIÁRIA --}}
-        <div
-            class="bg-gray-900 border border-gray-800 rounded-[3rem] p-8 mb-10 shadow-2xl relative overflow-hidden text-white italic">
-            <div class="flex justify-between items-center mb-10">
-                <div>
-                    <h2 class="text-xs font-black text-gray-400 uppercase tracking-widest italic leading-none">
-                        Performance de Vendas Diárias</h2>
-                    <p class="text-[8px] text-gray-600 uppercase font-bold mt-1 tracking-widest">Comparativo entre
-                        faturamento bruto e lucro líquido</p>
-                </div>
-
-                <div class="bg-black/40 px-4 py-2 rounded-full border border-gray-800">
-                    <span class="text-[9px] font-black text-orange-500 uppercase font-mono italic">Ref:
-                        {{ $mesAtualFiltro }}/{{ date('Y') }}</span>
-                </div>
-            </div>
-
-            {{-- 🛠️ REMOVIDO: overflow-x-auto e no-scrollbar para evitar o scroll --}}
-            <div class="flex items-end justify-between gap-1 h-64 px-2 border-b border-gray-800/50 pb-2 font-mono">
-
-                @php
-                    $maxReal =
-                        collect($datas)
-                            ->map(function ($d) {
-                                return (float) ($d['mesas'] ?? 0) + (float) ($d['pdv'] ?? 0);
-                            })
-                            ->max() ?:
-                        1;
-
-                    $maxSeguranca = $maxReal * 1.2;
-                @endphp
-
-                @foreach ($datas as $dia => $valores)
-                    @php
-                        $carbonDia = \Carbon\Carbon::parse($dia);
-                        $totalDia = (float) ($valores['mesas'] ?? 0) + (float) ($valores['pdv'] ?? 0);
-                        $lucroDia = (float) ($valores['lucro_mesas'] ?? 0) + (float) ($valores['lucro_pdv'] ?? 0);
-                        $alturaTotal = ($totalDia / $maxSeguranca) * 100;
-                        $porcentagemLucro = $totalDia > 0 ? ($lucroDia / $totalDia) * 100 : 0;
-                    @endphp
-
-                    @if ($carbonDia->format('m') == $mesAtualFiltro)
-                        {{-- 🛠️ AJUSTE: Removido o min-w-[35px] para o gráfico se ajustar à largura total --}}
-                        <div class="flex-1 flex flex-col items-center group relative">
-
-                            {{-- 🎈 TOOLTIP GOURMET --}}
-                            <div
-                                class="absolute -top-16 bg-gray-950 border border-gray-800 text-white text-[9px] font-black px-3 py-2 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all z-20 whitespace-nowrap pointer-events-none italic">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                                    <span>Venda: R$ {{ number_format($totalDia, 2, ',', '.') }}</span>
-                                </div>
-                                <div class="flex items-center gap-2 text-emerald-400">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                    <span>Lucro: R$ {{ number_format($lucroDia, 2, ',', '.') }}</span>
-                                </div>
-                                <div
-                                    class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-950 border-r border-b border-gray-800 rotate-45">
-                                </div>
-                            </div>
-
-                            {{-- 📊 A BARRA EMPILHADA --}}
-                            {{-- 🛠️ AJUSTE: w-full em vez de max-w-[22px] para as barras usarem o espaço disponível --}}
-                            <div class="w-full max-w-[18px] rounded-t-sm transition-all duration-700 relative z-10 flex flex-col justify-end overflow-hidden
-                        {{ $carbonDia->isToday() ? 'ring-1 ring-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.3)]' : '' }}
-                        {{ $totalDia > 0 ? 'bg-gray-800' : 'bg-gray-800/10' }}"
-                                style="height: {{ max($alturaTotal, 2) }}%; min-height: {{ $totalDia > 0 ? '4px' : '2px' }};">
-
-                                @if ($totalDia > 0)
-                                    <div
-                                        class="w-full bg-orange-600/30 flex-1 relative group-hover:bg-orange-600/50 transition-colors">
-                                        <div class="absolute top-0 left-0 w-full h-[1px] bg-white/20"></div>
-                                    </div>
-
-                                    <div class="w-full bg-emerald-500 relative"
-                                        style="height: {{ $porcentagemLucro }}%">
-                                        <div class="w-full h-[1px] bg-white/30"></div>
-                                    </div>
-                                @endif
-                            </div>
-
-                            {{-- Labels (Data e Dia) --}}
-                            <span
-                                class="mt-3 text-[8px] font-black {{ $carbonDia->isToday() ? 'text-orange-500 underline' : 'text-gray-500' }}">
-                                {{ $carbonDia->format('d') }}
-                            </span>
-                            <span
-                                class="text-[5px] font-black uppercase text-gray-700 tracking-tighter italic leading-none mt-1">
-                                {{ $diasSemana[$carbonDia->format('l')] ?? '' }}
-                            </span>
-                        </div>
-                    @endif
-                @endforeach
-            </div>
+    {{-- 📈 GRÁFICO DE PERFORMANCE DIÁRIA (FIXED WIDTH - SEM SCROLL) --}}
+<div class="bg-gray-900 border border-gray-800 rounded-[3rem] p-8 mb-10 shadow-2xl relative overflow-hidden text-white italic">
+    <div class="flex justify-between items-center mb-10">
+        <div>
+            <h2 class="text-xs font-black text-gray-400 uppercase tracking-widest italic leading-none">
+                Performance de Vendas Diárias</h2>
+            <p class="text-[8px] text-gray-600 uppercase font-bold mt-1 tracking-widest">Comparativo entre
+                faturamento bruto e lucro líquido</p>
         </div>
+
+        <div class="bg-black/40 px-4 py-2 rounded-full border border-gray-800">
+            <span class="text-[9px] font-black text-orange-500 uppercase font-mono italic">Ref:
+                {{ $mesAtualFiltro }}/{{ date('Y') }}</span>
+        </div>
+    </div>
+
+    {{-- Container do Gráfico: Removido overflow-x para travar o layout --}}
+    <div class="flex items-end justify-between h-64 px-1 border-b border-gray-800/50 pb-2 font-mono overflow-hidden">
+
+        @php
+            $maxReal = collect($datas)
+                ->map(fn($d) => (float) ($d['mesas'] ?? 0) + (float) ($d['pdv'] ?? 0))
+                ->max() ?: 1;
+
+            $maxSeguranca = $maxReal * 1.3; // Aumentamos o respiro para as barras não ficarem tão altas
+        @endphp
+
+        @foreach ($datas as $dia => $valores)
+            @php
+                $carbonDia = \Carbon\Carbon::parse($dia);
+                $totalDia = (float) ($valores['mesas'] ?? 0) + (float) ($valores['pdv'] ?? 0);
+                $lucroDia = (float) ($valores['lucro_mesas'] ?? 0) + (float) ($valores['lucro_pdv'] ?? 0);
+                $alturaTotal = ($totalDia / $maxSeguranca) * 100;
+                $porcentagemLucro = $totalDia > 0 ? ($lucroDia / $totalDia) * 100 : 0;
+            @endphp
+
+            @if ($carbonDia->format('m') == $mesAtualFiltro)
+                {{-- Removemos min-width e usamos flex-1 para auto-ajuste --}}
+                <div class="flex-1 flex flex-col items-center group relative min-w-0">
+
+                    {{-- 🎈 TOOLTIP GOURMET (Z-30 para não cortar) --}}
+                    <div class="absolute -top-16 bg-gray-950 border border-gray-800 text-white text-[9px] font-black px-3 py-2 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all z-30 whitespace-nowrap pointer-events-none italic">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                            <span>Venda: R$ {{ number_format($totalDia, 2, ',', '.') }}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-emerald-400">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>Lucro: R$ {{ number_format($lucroDia, 2, ',', '.') }}</span>
+                        </div>
+                        <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-950 border-r border-b border-gray-800 rotate-45"></div>
+                    </div>
+
+                    {{-- 📊 A BARRA EMPILHADA --}}
+                    {{-- max-w foi reduzido para 16px para garantir o respiro entre os 30 dias --}}
+                    <div class="w-full max-w-[16px] rounded-t-sm transition-all duration-700 relative z-10 flex flex-col justify-end overflow-hidden
+                        {{ $carbonDia->isToday() ? 'ring-1 ring-orange-500 bg-gray-800' : ($totalDia > 0 ? 'bg-gray-800' : 'bg-gray-800/10') }}"
+                        style="height: {{ max($alturaTotal, 2) }}%; min-height: 2px;">
+
+                        @if ($totalDia > 0)
+                            {{-- Custo --}}
+                            <div class="w-full bg-orange-600/30 flex-1 relative"></div>
+
+                            {{-- Lucro --}}
+                            <div class="w-full bg-emerald-500 relative" style="height: {{ $porcentagemLucro }}%">
+                                <div class="w-full h-[1px] bg-white/20"></div>
+                            </div>
+                        @endif
+                    </div>
+
+                    {{-- Labels: Fontes bem pequenas para caber os 30 dias sem scroll --}}
+                    <span class="mt-2 text-[8px] font-black {{ $carbonDia->isToday() ? 'text-orange-500' : 'text-gray-600' }}">
+                        {{ $carbonDia->format('d') }}
+                    </span>
+                    <span class="text-[5px] font-black uppercase text-gray-800 tracking-tighter leading-none">
+                        {{ $diasSemana[$carbonDia->format('l')] ?? '' }}
+                    </span>
+                </div>
+            @endif
+        @endforeach
+    </div>
+</div>
 
         {{-- 📋 TABELA (ESTA É A PARTE QUE CORRIGE AS LINHAS FALTANTES) --}}
         <div class="bg-gray-900 border border-gray-800 rounded-[3rem] shadow-2xl overflow-hidden">

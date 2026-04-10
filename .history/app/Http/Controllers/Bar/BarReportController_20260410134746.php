@@ -281,8 +281,8 @@ class BarReportController extends Controller
     public function daily(Request $request)
     {
         $mesReferencia = $request->input('mes_referencia', now()->format('Y-m'));
-        $startDate = \Carbon\Carbon::parse($mesReferencia)->startOfMonth();
-        $endDate = \Carbon\Carbon::parse($mesReferencia)->endOfMonth();
+        $startDate = Carbon::parse($mesReferencia)->startOfMonth();
+        $endDate = Carbon::parse($mesReferencia)->endOfMonth();
 
         // 1. Inicializa o array com todos os dias do mês
         $datas = [];
@@ -294,11 +294,11 @@ class BarReportController extends Controller
                 'lucro_mesas' => 0,
                 'lucro_pdv' => 0,
                 'descontos' => 0,
-                'vouchers' => 0
+                'vouchers' => 0 // Adicionado para auditoria visual no gráfico
             ];
         }
 
-        // 2. Busca itens de Mesas (BarOrder)
+        // 2. Busca itens de Mesas (BarOrder) - Otimizado com with('product')
         $orderItems = BarOrderItem::whereHas('order', function ($q) use ($startDate, $endDate) {
             $q->whereIn('status', ['paid', 'pago'])->whereBetween('updated_at', [$startDate, $endDate]);
         })->with(['order', 'product'])->get();
@@ -307,13 +307,13 @@ class BarReportController extends Controller
             $dia = $i->updated_at->format('Y-m-d');
             if (isset($datas[$dia])) {
                 $isVoucher = str_contains(strtolower($i->order->payment_method ?? ''), 'voucher');
-                $venda = (float) $i->subtotal;
-                $custo = (float) ($i->product->purchase_price ?? 0) * $i->quantity;
+                $venda = $i->subtotal;
+                $custo = ($i->product->purchase_price ?? 0) * $i->quantity;
 
                 if ($isVoucher) {
-                    // Registra apenas o valor da cortesia para auditoria, sem negativar o lucro
                     $datas[$dia]['vouchers'] += $venda;
-                    // $datas[$dia]['lucro_mesas'] -= $custo; // REMOVIDO para não negativar o lucro diário
+                    // No voucher, o lucro é NEGATIVO (custo do produto) pois não houve entrada
+                    //$datas[$dia]['lucro_mesas'] -= $custo;
                 } else {
                     $datas[$dia]['mesas'] += $venda;
                     $datas[$dia]['lucro_mesas'] += ($venda - $custo);
@@ -330,13 +330,12 @@ class BarReportController extends Controller
             $dia = $i->created_at->format('Y-m-d');
             if (isset($datas[$dia])) {
                 $isVoucher = str_contains(strtolower($i->sale->payment_method ?? ''), 'voucher');
-                $venda = (float) $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0);
-                $custo = (float) ($i->product->purchase_price ?? 0) * $i->quantity;
+                $venda = $i->quantity * ($i->price_at_sale ?? $i->unit_price ?? 0);
+                $custo = ($i->product->purchase_price ?? 0) * $i->quantity;
 
                 if ($isVoucher) {
-                    // Registra apenas o valor da cortesia para auditoria
                     $datas[$dia]['vouchers'] += $venda;
-                    // $datas[$dia]['lucro_pdv'] -= $custo; // REMOVIDO para não negativar o lucro diário
+                    $datas[$dia]['lucro_pdv'] -= $custo;
                 } else {
                     $datas[$dia]['pdv'] += $venda;
                     $datas[$dia]['lucro_pdv'] += ($venda - $custo);
@@ -344,17 +343,14 @@ class BarReportController extends Controller
             }
         }
 
-        // 4. Ajuste Final de Descontos (Apenas para vendas reais)
+        // 4. Ajuste Final de Descontos (Apenas para vendas NÃO-voucher)
         foreach ($datas as $data => $valores) {
             $ordens = BarOrder::whereIn('status', ['paid', 'pago'])
                 ->where('payment_method', 'not like', '%voucher%')
                 ->whereDate('updated_at', $data)->get();
 
             foreach ($ordens as $o) {
-                $subtotalItens = (float) $o->items->sum('subtotal');
-                $valorPago = (float) $o->total_value;
-                $desconto = (float) ($o->discount_value > 0 ? $o->discount_value : ($subtotalItens - $valorPago));
-
+                $desconto = $o->discount_value ?? ($o->items->sum('subtotal') - $o->total_value);
                 if ($desconto > 0.01) {
                     $datas[$data]['mesas'] -= $desconto;
                     $datas[$data]['lucro_mesas'] -= $desconto;
