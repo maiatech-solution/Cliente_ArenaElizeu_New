@@ -539,16 +539,13 @@ class BarReportController extends Controller
             // 2. Formatação dos Itens e Cálculo do Subtotal Bruto
             $subtotalBruto = 0;
             $itensFormatados = $venda->items->map(function ($item) use (&$subtotalBruto) {
-                // 🎯 Ajuste: Tenta quantity ou qtd / unit_price ou price_at_sale
-                $qtd = $item->quantity ?? $item->qtd ?? 0;
-                $precoUnitario = $item->price_at_sale ?? $item->unit_price ?? $item->price ?? 0;
-
-                $valorItem = $qtd * $precoUnitario;
+                $precoUnitario = $item->price_at_sale ?? $item->unit_price ?? 0;
+                $valorItem = $item->quantity * $precoUnitario;
                 $subtotalBruto += $valorItem;
 
                 return [
                     'nome'     => $item->product->name ?? 'Produto',
-                    'qtd'      => $qtd,
+                    'qtd'      => $item->quantity,
                     'subtotal' => number_format($valorItem, 2, ',', '.')
                 ];
             });
@@ -656,56 +653,19 @@ class BarReportController extends Controller
         $end = $request->get('data_fim', now()->format('Y-m-d'));
         $search = $request->get('search');
 
-        $query = \App\Models\Bar\BarCashMovement::with(['user', 'barOrder'])
+        // Buscamos as vendas finalizadas com método Voucher
+        // Aqui assumimos que você tem uma relação ou campo de pagamento na sua model de vendas do Bar
+        $query = \App\Models\BarSale::with(['user']) // Supondo que BarSale seja sua model de vendas
             ->where('payment_method', 'voucher')
             ->whereBetween('created_at', [$start . ' 00:00:00', $end . ' 23:59:59'])
             ->when($search, function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
-                    $sub->where('id', 'like', "%{$search}%")
-                        ->orWhereHas('user', function ($u) use ($search) {
-                            $u->where('name', 'like', "%{$search}%");
-                        });
-                });
+                $q->where('customer_name', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%");
             });
 
-        $cortesias = $query->orderBy('created_at', 'desc')->get()->map(function ($item) {
-            $valorReal = 0;
-            $vendaIdReal = null;
+        $cortesias = $query->orderBy('created_at', 'desc')->get();
 
-            // 1. Se for MESA (Relacionamento Direto)
-            if ($item->bar_order_id) {
-                $vendaMesa = \DB::table('bar_orders')->where('id', $item->bar_order_id)->first();
-                if ($vendaMesa) {
-                    $valorReal = $vendaMesa->total_value;
-                    $vendaIdReal = $vendaMesa->id;
-                }
-            }
-
-            // 2. Se for PDV (Pescaria por tempo/usuário)
-            if ($valorReal <= 0) {
-                $vendaPdv = \DB::table('bar_sales')
-                    ->where('user_id', $item->user_id)
-                    ->where('payment_method', 'voucher')
-                    ->whereBetween('created_at', [
-                        $item->created_at->subSeconds(2),
-                        $item->created_at->addSeconds(2)
-                    ])->first();
-
-                if ($vendaPdv) {
-                    $valorReal = $vendaPdv->total_value;
-                    $vendaIdReal = $vendaPdv->id;
-                }
-            }
-
-            // Injeta as propriedades que a View vai precisar
-            $item->valor_real = ($valorReal > 0) ? $valorReal : ($item->amount ?? 0);
-            $item->venda_id_real = $vendaIdReal;
-            $item->origem_tipo = $item->bar_order_id ? 'mesa' : 'pdv';
-
-            return $item;
-        });
-
-        $totalValor = $cortesias->sum('valor_real');
+        $totalValor = $cortesias->sum('total_amount');
         $totalQtd = $cortesias->count();
 
         return view('bar.reports.vouchers', compact('cortesias', 'totalValor', 'totalQtd', 'start', 'end', 'search'));

@@ -195,39 +195,6 @@
                     </div>
                 </a>
 
-                {{-- Performance de Operadores (ADICIONADO) --}}
-                <a href="{{ route('admin.financeiro.relatorio_operadores', ['arena_id' => request('arena_id')]) }}"
-                    class="group flex items-center p-3 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-transparent hover:border-violet-500 hover:shadow-xl transition-all duration-300">
-                    <div
-                        class="p-5 bg-violet-50 dark:bg-violet-900/30 text-violet-600 rounded-2xl group-hover:scale-90 transition-transform">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
-                            </path>
-                        </svg>
-                    </div>
-                    <div class="ml-4">
-                        <h4 class="text-sm font-black dark:text-white uppercase tracking-tight">Performance</h4>
-                        <p class="text-[10px] text-gray-400 font-bold uppercase">Produtividade por Operador</p>
-                    </div>
-                </a>
-
-                {{-- Relatório de Cortesias --}}
-                <a href="{{ route('admin.financeiro.relatorio_cortesias', ['arena_id' => request('arena_id')]) }}"
-                    class="group flex items-center p-3 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-transparent hover:border-amber-500 hover:shadow-xl transition-all duration-300">
-                    <div
-                        class="p-5 bg-amber-50 dark:bg-amber-900/30 text-amber-500 rounded-2xl group-hover:scale-90 transition-transform">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                        </svg>
-                    </div>
-                    <div class="ml-4">
-                        <h4 class="text-sm font-black dark:text-white uppercase tracking-tight">Cortesias</h4>
-                        <p class="text-[10px] text-gray-400 font-bold uppercase">Rastrear Vouchers</p>
-                    </div>
-                </a>
-
             </div>
         </div>
     </div>

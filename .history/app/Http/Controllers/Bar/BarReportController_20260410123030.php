@@ -670,9 +670,9 @@ class BarReportController extends Controller
 
         $cortesias = $query->orderBy('created_at', 'desc')->get()->map(function ($item) {
             $valorReal = 0;
-            $vendaIdReal = null;
+            $vendaIdReal = null; // 🎯 Variável para guardar o ID real da venda
 
-            // 1. Se for MESA (Relacionamento Direto)
+            // 1. Tenta buscar por MESA
             if ($item->bar_order_id) {
                 $vendaMesa = \DB::table('bar_orders')->where('id', $item->bar_order_id)->first();
                 if ($vendaMesa) {
@@ -681,7 +681,7 @@ class BarReportController extends Controller
                 }
             }
 
-            // 2. Se for PDV (Pescaria por tempo/usuário)
+            // 2. Tenta buscar por PDV (Relacionamento por Tempo/Usuário)
             if ($valorReal <= 0) {
                 $vendaPdv = \DB::table('bar_sales')
                     ->where('user_id', $item->user_id)
@@ -689,18 +689,20 @@ class BarReportController extends Controller
                     ->whereBetween('created_at', [
                         $item->created_at->subSeconds(2),
                         $item->created_at->addSeconds(2)
-                    ])->first();
+                    ])
+                    ->first();
 
                 if ($vendaPdv) {
                     $valorReal = $vendaPdv->total_value;
-                    $vendaIdReal = $vendaPdv->id;
+                    $vendaIdReal = $vendaPdv->id; // 🎯 Pegamos o ID da bar_sales
                 }
             }
 
-            // Injeta as propriedades que a View vai precisar
             $item->valor_real = ($valorReal > 0) ? $valorReal : ($item->amount ?? 0);
-            $item->venda_id_real = $vendaIdReal;
+
+            // Atribuímos a origem e o ID correto para a View usar no botão
             $item->origem_tipo = $item->bar_order_id ? 'mesa' : 'pdv';
+            $item->id_venda_original = $vendaIdReal;
 
             return $item;
         });

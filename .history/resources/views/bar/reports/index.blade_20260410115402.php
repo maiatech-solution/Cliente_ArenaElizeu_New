@@ -195,23 +195,19 @@
             </a>
 
             {{-- Relatório de Cortesias (Vouchers) --}}
-            <a href="{{ route('bar.reports.vouchers') }}"
-                class="group p-8 bg-gray-900 rounded-[2.5rem] border border-gray-800 hover:border-orange-500 transition-all shadow-2xl relative overflow-hidden">
-                <div class="relative z-10">
-                    <div
-                        class="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500 mb-6 group-hover:scale-110 transition-transform">
-                        <span class="text-2xl">🎁</span>
-                    </div>
-                    <h3 class="text-white font-black uppercase italic text-lg leading-tight">Cortesias &<br>Vouchers
-                    </h3>
-                    <p class="text-[10px] text-gray-500 font-bold uppercase mt-2 tracking-widest italic">Auditoria de
-                        Brindes</p>
-                </div>
-                <div
-                    class="absolute -right-4 -bottom-4 text-7xl opacity-[0.02] group-hover:opacity-[0.05] transition-opacity">
-                    🎁
-                </div>
-            </a>
+<a href="{{ route('bar.reports.vouchers') }}"
+    class="group p-8 bg-gray-900 rounded-[2.5rem] border border-gray-800 hover:border-orange-500 transition-all shadow-2xl relative overflow-hidden">
+    <div class="relative z-10">
+        <div class="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500 mb-6 group-hover:scale-110 transition-transform">
+            <span class="text-2xl">🎁</span>
+        </div>
+        <h3 class="text-white font-black uppercase italic text-lg leading-tight">Cortesias &<br>Vouchers</h3>
+        <p class="text-[10px] text-gray-500 font-bold uppercase mt-2 tracking-widest italic">Auditoria de Brindes</p>
+    </div>
+    <div class="absolute -right-4 -bottom-4 text-7xl opacity-[0.02] group-hover:opacity-[0.05] transition-opacity">
+        🎁
+    </div>
+</a>
 
         </div>
     </div>

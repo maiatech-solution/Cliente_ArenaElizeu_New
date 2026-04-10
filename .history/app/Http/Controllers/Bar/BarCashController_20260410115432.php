@@ -373,7 +373,7 @@ class BarCashController extends Controller
             }
 
             $movs = \App\Models\Bar\BarCashMovement::where('bar_cash_session_id', $session->id)->get();
-            $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito', 'voucher'];
+            $metodosDigitais = ['pix', 'debito', 'credito', 'cartao', 'misto', 'crédito', 'débito'];
 
             $vCash = $movs->where('type', 'venda')->filter(fn($m) => strtolower($m->payment_method) === 'dinheiro')->sum('amount');
             $ref = $movs->where('type', 'reforco')->sum('amount');

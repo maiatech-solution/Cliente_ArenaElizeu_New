@@ -314,7 +314,6 @@ Route::middleware(['auth', 'gestor'])->prefix('bar')->name('bar.')->group(functi
         Route::get('/pagamentos', [BarReportController::class, 'payments'])->name('payments');
         Route::get('/diario', [BarReportController::class, 'daily'])->name('daily');
         Route::get('/cancelamentos', [BarReportController::class, 'cancelations'])->name('cancelations');
-        Route::get('/cortesias', [BarReportController::class, 'vouchers'])->name('vouchers');
     });
 });
 

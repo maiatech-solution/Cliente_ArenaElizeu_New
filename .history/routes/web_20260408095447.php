@@ -191,10 +191,6 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/ocupacao', [FinanceiroController::class, 'relatorioOcupacao'])->name('relatorio_ocupacao');
             Route::get('/ranking', [FinanceiroController::class, 'relatorioRanking'])->name('relatorio_ranking');
             Route::get('/dividas', [FinanceiroController::class, 'relatorioDividas'])->name('relatorio_dividas');
-
-            // 🏆 Nova rota de Performance de Operadores
-            Route::get('/operadores', [FinanceiroController::class, 'relatorioOperadores'])->name('relatorio_operadores');
-            Route::get('/cortesias', [FinanceiroController::class, 'relatorioCortesias'])->name('relatorio_cortesias');
         });
 
         // 🏢 7. DADOS DA EMPRESA (🔒 SÓ ADMIN/GESTOR)
@@ -314,7 +310,6 @@ Route::middleware(['auth', 'gestor'])->prefix('bar')->name('bar.')->group(functi
         Route::get('/pagamentos', [BarReportController::class, 'payments'])->name('payments');
         Route::get('/diario', [BarReportController::class, 'daily'])->name('daily');
         Route::get('/cancelamentos', [BarReportController::class, 'cancelations'])->name('cancelations');
-        Route::get('/cortesias', [BarReportController::class, 'vouchers'])->name('vouchers');
     });
 });
 

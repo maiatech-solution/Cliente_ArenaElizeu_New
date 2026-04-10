@@ -515,86 +515,34 @@ class FinanceiroController extends Controller
      */
     public function relatorioOperadores(Request $request)
     {
+        // 1. Definição de filtros (Padrão: mês atual)
         $start = $request->get('data_inicio', now()->startOfMonth()->format('Y-m-d'));
         $end = $request->get('data_fim', now()->format('Y-m-d'));
         $search = $request->get('search');
 
-        $operadores = \App\Models\Reserva::with(['manager', 'transactions'])
+        // 2. Query de Performance
+        $operadores = \App\Models\Reserva::with('manager')
             ->select('manager_id')
+            // Volume total de reservas criadas
             ->selectRaw('COUNT(*) as qtd_reservas')
+            // Faturamento total (Bruto)
             ->selectRaw('SUM(final_price) as total_bruto')
-            // 1. Soma o que foi cancelado/falta (Prejuízo)
+            // Soma de No-Shows e Cancelamentos (para medir a "qualidade" da reserva)
             ->selectRaw("SUM(CASE WHEN status IN ('no_show', 'canceled', 'rejected') THEN final_price ELSE 0 END) as total_perdas")
             ->whereBetween('date', [$start, $end])
-            ->whereNotNull('manager_id')
-            ->where('status', '!=', 'maintenance') // 🛡️ Blindagem contra manutenção
+            ->whereNotNull('manager_id') // Garante que pegamos apenas reservas feitas por humanos
             ->when($search, function ($q) use ($search) {
                 $q->whereHas('manager', fn($query) => $query->where('name', 'like', "%{$search}%"));
             })
             ->groupBy('manager_id')
             ->get()
             ->map(function ($item) {
-                // 2. 🎯 Busca quanto dessas reservas foi pago com VOUCHER
-                // Pegamos todas as transações das reservas deste operador no período
-                $reservasIds = \App\Models\Reserva::where('manager_id', $item->manager_id)
-                    ->whereBetween('date', [request('data_inicio', now()->startOfMonth()), request('data_fim', now())])
-                    ->pluck('id');
-
-                $totalVouchers = \App\Models\FinancialTransaction::whereIn('reserva_id', $reservasIds)
-                    ->where('payment_method', 'voucher')
-                    ->sum('amount');
-
-                $item->total_vouchers = $totalVouchers;
-
-                // 3. 💸 Cálculo do Líquido Real:
-                // Bruto - (Cancelamentos) - (Vouchers/Cortesias)
-                $item->faturamento_liquido = $item->total_bruto - $item->total_perdas - $totalVouchers;
-
+                // Faturamento que realmente se concretizou
+                $item->faturamento_liquido = $item->total_bruto - $item->total_perdas;
                 return $item;
             })
-            ->sort(function ($a, $b) {
-                if ($a->faturamento_liquido === $b->faturamento_liquido) {
-                    return $b->qtd_reservas <=> $a->qtd_reservas; // Desempata por volume
-                }
-                return $b->faturamento_liquido <=> $a->faturamento_liquido;
-            });
+            ->sortByDesc('faturamento_liquido');
 
         return view('admin.financeiro.operadores', compact('operadores', 'start', 'end', 'search'));
-    }
-
-    public function relatorioCortesias(Request $request)
-    {
-        $arenaId = $request->get('arena_id');
-        $mes = $request->get('mes', now()->month);
-        $ano = $request->get('ano', now()->year);
-        $search = $request->get('search'); // 🔍 Captura o termo de busca
-
-        $query = \App\Models\FinancialTransaction::with(['reserva', 'arena', 'manager'])
-            ->where('payment_method', 'voucher')
-            ->whereYear('paid_at', $ano)
-            ->when($mes !== 'all', fn($q) => $q->whereMonth('paid_at', (int)$mes))
-            ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
-            // 🎯 Filtro por nome do cliente (via relacionamento com reserva)
-            ->when($search, function ($q) use ($search) {
-                $q->whereHas('reserva', function ($sub) use ($search) {
-                    $sub->where('client_name', 'like', "%{$search}%");
-                });
-            });
-
-        $cortesias = $query->orderBy('paid_at', 'desc')->get();
-
-        // Totais para os Cards (calculados sobre o resultado filtrado)
-        $totalValorCortesias = $cortesias->sum('amount');
-        $totalQuantidade = $cortesias->count();
-
-        // Adicionei o 'search' no compact para manter o valor no input após filtrar
-        return view('admin.financeiro.cortesias', compact(
-            'cortesias',
-            'totalValorCortesias',
-            'totalQuantidade',
-            'mes',
-            'ano',
-            'search'
-        ));
     }
 }

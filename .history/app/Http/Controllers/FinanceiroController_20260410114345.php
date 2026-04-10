@@ -567,34 +567,19 @@ class FinanceiroController extends Controller
         $arenaId = $request->get('arena_id');
         $mes = $request->get('mes', now()->month);
         $ano = $request->get('ano', now()->year);
-        $search = $request->get('search'); // 🔍 Captura o termo de busca
 
         $query = \App\Models\FinancialTransaction::with(['reserva', 'arena', 'manager'])
             ->where('payment_method', 'voucher')
             ->whereYear('paid_at', $ano)
             ->when($mes !== 'all', fn($q) => $q->whereMonth('paid_at', (int)$mes))
-            ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId))
-            // 🎯 Filtro por nome do cliente (via relacionamento com reserva)
-            ->when($search, function ($q) use ($search) {
-                $q->whereHas('reserva', function ($sub) use ($search) {
-                    $sub->where('client_name', 'like', "%{$search}%");
-                });
-            });
+            ->when($arenaId, fn($q) => $q->where('arena_id', $arenaId));
 
         $cortesias = $query->orderBy('paid_at', 'desc')->get();
 
-        // Totais para os Cards (calculados sobre o resultado filtrado)
+        // Totais para os Cards
         $totalValorCortesias = $cortesias->sum('amount');
         $totalQuantidade = $cortesias->count();
 
-        // Adicionei o 'search' no compact para manter o valor no input após filtrar
-        return view('admin.financeiro.cortesias', compact(
-            'cortesias',
-            'totalValorCortesias',
-            'totalQuantidade',
-            'mes',
-            'ano',
-            'search'
-        ));
+        return view('admin.financeiro.cortesias', compact('cortesias', 'totalValorCortesias', 'totalQuantidade', 'mes', 'ano'));
     }
 }

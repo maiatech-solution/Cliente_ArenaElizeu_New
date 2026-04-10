@@ -659,49 +659,37 @@ class BarReportController extends Controller
         $query = \App\Models\Bar\BarCashMovement::with(['user', 'barOrder'])
             ->where('payment_method', 'voucher')
             ->whereBetween('created_at', [$start . ' 00:00:00', $end . ' 23:59:59'])
+            // 🔍 NOVO FILTRO: Busca por ID ou Nome do Operador
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($sub) use ($search) {
-                    $sub->where('id', 'like', "%{$search}%")
+                    $sub->where('id', 'like', "%{$search}%") // Busca pelo ID #
                         ->orWhereHas('user', function ($u) use ($search) {
-                            $u->where('name', 'like', "%{$search}%");
+                            $u->where('name', 'like', "%{$search}%"); // Busca pelo nome do Maia/Fulano
                         });
                 });
             });
 
         $cortesias = $query->orderBy('created_at', 'desc')->get()->map(function ($item) {
             $valorReal = 0;
-            $vendaIdReal = null;
 
-            // 1. Se for MESA (Relacionamento Direto)
+            // 1. Tenta buscar por MESA (Relacionamento Direto)
             if ($item->bar_order_id) {
-                $vendaMesa = \DB::table('bar_orders')->where('id', $item->bar_order_id)->first();
-                if ($vendaMesa) {
-                    $valorReal = $vendaMesa->total_value;
-                    $vendaIdReal = $vendaMesa->id;
-                }
+                $valorReal = \DB::table('bar_orders')->where('id', $item->bar_order_id)->value('total_value') ?? 0;
             }
 
-            // 2. Se for PDV (Pescaria por tempo/usuário)
+            // 2. Tenta buscar por PDV (Relacionamento por Tempo/Usuário)
             if ($valorReal <= 0) {
-                $vendaPdv = \DB::table('bar_sales')
+                $valorReal = \DB::table('bar_sales')
                     ->where('user_id', $item->user_id)
                     ->where('payment_method', 'voucher')
                     ->whereBetween('created_at', [
                         $item->created_at->subSeconds(2),
                         $item->created_at->addSeconds(2)
-                    ])->first();
-
-                if ($vendaPdv) {
-                    $valorReal = $vendaPdv->total_value;
-                    $vendaIdReal = $vendaPdv->id;
-                }
+                    ])
+                    ->value('total_value') ?? 0;
             }
 
-            // Injeta as propriedades que a View vai precisar
             $item->valor_real = ($valorReal > 0) ? $valorReal : ($item->amount ?? 0);
-            $item->venda_id_real = $vendaIdReal;
-            $item->origem_tipo = $item->bar_order_id ? 'mesa' : 'pdv';
-
             return $item;
         });
 
