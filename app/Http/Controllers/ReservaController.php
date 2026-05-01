@@ -468,13 +468,14 @@ class ReservaController extends Controller
         return $newReserva;
     }
 
+
     /**
      * Lógica centralizada para Cancelamento ou No-Show (Finalização de Status).
-     * Corrigido para processar estornos reais que impactam o saldo do caixa atual.
+     * Ajustado para garantir a subtração real no saldo do caixa e integridade do faturamento.
      */
     public function finalizeStatus(Reserva $reserva, string $newStatus, string $reason, bool $shouldRefund, float $amountPaidRef)
     {
-        // 1. Validação de Estado
+        // 1. Validação de Estado para permitir a operação
         $statusAceitaveis = [
             Reserva::STATUS_CONFIRMADA,
             Reserva::STATUS_CONCLUIDA,
@@ -493,34 +494,35 @@ class ReservaController extends Controller
         // --- 💰 PASSO 1: GERENCIAMENTO FINANCEIRO ---
         if ($amountPaid > 0) {
 
-            // 🔍 IDENTIFICAÇÃO DO MÉTODO ORIGINAL (Para evitar divergência no faturamento)
-            // Buscamos a última transação de ENTRADA desta reserva para saber de onde o dinheiro veio
+            // 🔍 IDENTIFICAÇÃO DO MÉTODO ORIGINAL
+            // Buscamos a última transação de entrada para estornar no "balde" correto (PIX, Dinheiro, etc)
             $ultimaTransacao = \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
                 ->where('amount', '>', 0)
                 ->latest()
                 ->first();
 
-            // Se encontrar, usa o método original (pix, cartao, etc), senão usa 'outro' como fallback
-            $metodoOriginal = $ultimaTransacao ? $ultimaTransacao->payment_method : 'outro';
+            $metodoOriginal = $ultimaTransacao ? $ultimaTransacao->payment_method : 'dinheiro';
 
             if ($shouldRefund) {
-                // LÓGICA DE ESTORNO: Registra a saída EXATAMENTE no mesmo balde da entrada
+                // ✅ LÓGICA DE ESTORNO: Registra um valor NEGATIVO. 
+                // Isso subtrai automaticamente do Saldo Geral e do Faturamento da Arena.
                 \App\Models\FinancialTransaction::create([
                     'reserva_id'     => $reserva->id,
                     'arena_id'       => $arenaId,
                     'user_id'        => $reserva->user_id,
                     'manager_id'     => \Auth::id(),
-                    'amount'         => -$amountPaid,
+                    'amount'         => -$amountPaid, // Subtração matemática real
                     'type'           => \App\Models\FinancialTransaction::TYPE_REFUND,
-                    'payment_method' => $metodoOriginal, // ✨ ANTES ERA FIXO 'outro'
+                    'payment_method' => $metodoOriginal,
                     'description'    => "ESTORNO/DEVOLUÇÃO: " . $reason . " (Reserva #{$reserva->id})",
                     'paid_at'        => now(),
                 ]);
 
-                $messageFinance = " O valor de R$ " . number_format($amountPaid, 2, ',', '.') . " foi registrado como SAÍDA (" . strtoupper($metodoOriginal) . ") no caixa.";
+                $messageFinance = " O valor de R$ " . number_format($amountPaid, 2, ',', '.') . " foi subtraído como SAÍDA (" . strtoupper($metodoOriginal) . ") no caixa.";
             } else {
-                // LÓGICA DE RETENÇÃO: Não deletamos mais para não sumir do faturamento geral
-                // Apenas desvinculamos da reserva para que o saldo dela fique zerado
+                // ✅ LÓGICA DE RETENÇÃO: O dinheiro permanece no caixa da arena.
+                // Apenas desvinculamos da reserva para que o saldo individual dela zere, 
+                // mas mantemos o registro de entrada no faturamento global da arena.
                 \App\Models\FinancialTransaction::where('reserva_id', $reserva->id)
                     ->where('arena_id', $arenaId)
                     ->whereIn('type', [
@@ -528,16 +530,16 @@ class ReservaController extends Controller
                         \App\Models\FinancialTransaction::TYPE_PAYMENT
                     ])
                     ->update([
-                        'reserva_id' => null, // Desvincula para limpar a reserva
+                        'reserva_id' => null, // Desvincula para a reserva não parecer "paga" após cancelada
                         'description' => \DB::raw("CONCAT(description, ' [RETIDO POR CANCELAMENTO/FALTA - Reserva #{$reserva->id}]')")
                     ]);
 
-                // Define o tipo de retenção para o log
+                // Define o tipo de retenção para auditoria no log
                 $typeLog = ($newStatus === Reserva::STATUS_CANCELADA)
                     ? ($reserva->is_recurrent ? \App\Models\FinancialTransaction::TYPE_RETEN_CANC_P_COMP : \App\Models\FinancialTransaction::TYPE_RETEN_CANC_COMP)
                     : \App\Models\FinancialTransaction::TYPE_RETEN_NOSHOW_COMP;
 
-                // Log informativo de retenção (valor 0 para não duplicar o montante no faturamento)
+                // Log informativo (Valor 0 para não duplicar o saldo, pois o dinheiro já entrou antes)
                 \App\Models\FinancialTransaction::create([
                     'reserva_id'     => null,
                     'arena_id'       => $arenaId,
@@ -546,11 +548,11 @@ class ReservaController extends Controller
                     'amount'         => 0,
                     'type'           => $typeLog,
                     'payment_method' => $metodoOriginal,
-                    'description'    => "Compensação: Valor R$ " . number_format($amountPaid, 2, ',', '.') . " mantido como RETENÇÃO (" . ($newStatus === Reserva::STATUS_CANCELADA ? 'Cancelamento' : 'Falta') . ").",
+                    'description'    => "RETENÇÃO: Valor de R$ " . number_format($amountPaid, 2, ',', '.') . " mantido no faturamento da arena.",
                     'paid_at'        => now(),
                 ]);
 
-                $messageFinance = " O valor de R$ " . number_format($amountPaid, 2, ',', '.') . " foi mantido como crédito de retenção no caixa.";
+                $messageFinance = " O valor foi mantido como retenção no caixa da arena.";
             }
         }
 
@@ -558,7 +560,7 @@ class ReservaController extends Controller
         $updateData = [
             'status'     => $newStatus,
             'manager_id' => \Auth::id(),
-            'total_paid' => 0, // Zera o saldo interno da reserva já que o dinheiro foi estornado ou retido
+            'total_paid' => 0, // Zera o saldo da reserva para refletir que ela não possui mais crédito ativo
         ];
 
         if ($newStatus === Reserva::STATUS_CANCELADA) {
@@ -571,7 +573,7 @@ class ReservaController extends Controller
 
         $reserva->update($updateData);
 
-        // 🚀 REPUTAÇÃO AUTOMÁTICA
+        // 🚀 REPUTAÇÃO AUTOMÁTICA (Penalização por falta)
         if ($newStatus === Reserva::STATUS_NO_SHOW) {
             $user = $reserva->user;
             if ($user) {
@@ -581,7 +583,7 @@ class ReservaController extends Controller
             }
         }
 
-        // 🏟️ LIBERAÇÃO DO INVENTÁRIO (Slot Verde)
+        // 🏟️ LIBERAÇÃO DO INVENTÁRIO (Recria o slot "Verde" na agenda)
         $this->recreateFixedSlot($reserva);
 
         return ['message_finance' => $messageFinance];
